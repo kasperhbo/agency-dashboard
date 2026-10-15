@@ -1,0 +1,21 @@
+services:
+  staging:
+    image: ${AGENCY_STAGING_IMAGE:-agency-dashboard:staging}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        BUILD_SHA: ${AGENCY_BUILD_SHA:-uncommitted}
+    init: true
+    ports:
+      - '127.0.0.1:4320:4320'
+    read_only: true
+    tmpfs:
+      - /app/.agency/staging/container:uid=1000,gid=1000,mode=0700
+      - /tmp:uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 5s

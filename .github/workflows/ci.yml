@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  PLAYWRIGHT_HTML_OPEN: never
+  AGENCY_CLAUDE_ROOT: .agency/ci-empty/claude
+  AGENCY_CODEX_ROOT: .agency/ci-empty/codex
+
+jobs:
+  unit:
+    name: Node 24 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
+        env:
+          NODE_V8_COVERAGE: coverage/v8
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.os }}
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 7
+
+  functional:
+    name: Browser functional tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --reporter=line,html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-functional-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  staging:
+    name: Built app / isolated fixture staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/deploy-staging.mjs verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-functional-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  container:
+    name: Fixture container build and health
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: agency-dashboard:ci
+          build-args: BUILD_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Check actual container health and stop
+        shell: bash
+        run: |
+          docker run --detach --name agency-staging-ci --publish 127.0.0.1:4320:4320 agency-dashboard:ci
+          trap 'docker logs agency-staging-ci; docker rm --force agency-staging-ci' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4320/api/health > /tmp/agency-health.json; then break; fi
+            sleep 1
+          done
+          node -e "const fs=require('node:fs'); const h=JSON.parse(fs.readFileSync('/tmp/agency-health.json')); if(!h.ok || h.environment!=='staging' || h.dataSource!=='fixture') process.exit(1)"
+          curl --fail --silent 'http://127.0.0.1:4320/api/topology?mode=local' > /tmp/agency-topology.json
+          node -e "const t=require('/tmp/agency-topology.json'); if(t.version!==1 || t.dataSource!=='fixture' || t.summary.subagents<1) process.exit(1)"

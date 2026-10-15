@@ -1,0 +1,92 @@
+const runs = new Set(['session', 'subagent', 'missing-parent']);
+const rank = node => ({ running: 0, waiting: 1, error: 2, idle: 3, completed: 4 })[node.status] ?? 5;
+const order = (a, b) => rank(a) - rank(b) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) || a.id.localeCompare(b.id);
+
+/** Deterministic, bounded tree layout. Membership and lineage remain separate. */
+export function layoutTopology(graph, options = {}) {
+  const { provider = 'all', project = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [] } = options;
+  const expandedIds = new Set(expanded);
+  const nodes = new Map(graph.nodes.map(node => [node.id, node]));
+  const allowed = node => node.kind === 'workspace' || provider === 'all' || node.provider === provider;
+  const edges = graph.edges.filter(edge => nodes.has(edge.source) && nodes.has(edge.target) && edge.source !== edge.target);
+  const incoming = new Map(), children = new Map();
+  for (const edge of [...edges].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!incoming.has(edge.target) || (edge.kind === 'parent-child' && incoming.get(edge.target).kind !== 'parent-child')) incoming.set(edge.target, edge);
+    if (edge.kind !== 'parent-child' || !runs.has(nodes.get(edge.source).kind) || !runs.has(nodes.get(edge.target).kind)) continue;
+    if (!children.has(edge.source)) children.set(edge.source, []);
+    children.get(edge.source).push(nodes.get(edge.target));
+  }
+  for (const [id, list] of children) children.set(id, [...new Map(list.map(node => [node.id, node])).values()].sort(order));
+  const search = query.toLowerCase().trim();
+  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && allowed(node) && (project === 'all' || node.project === project) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
+  const included = new Set(matches.map(node => node.id));
+  if (search && !activeOnly) {
+    const queue = [...included];
+    while (queue.length) for (const child of children.get(queue.shift()) || []) {
+      if (!included.has(child.id) && allowed(child) && (project === 'all' || child.project === project)) { included.add(child.id); queue.push(child.id); }
+    }
+  }
+  for (const match of [...included]) {
+    let id = match;
+    const seen = new Set([id]);
+    while (incoming.has(id)) {
+      const ancestor = nodes.get(incoming.get(id).source);
+      if (seen.has(ancestor.id) || !allowed(ancestor)) break;
+      included.add(ancestor.id); seen.add(ancestor.id); id = ancestor.id;
+    }
+  }
+  const visibleRuns = [...included].filter(id => runs.has(nodes.get(id).kind));
+  const positioned = [], moreGroups = [], placed = new Set();
+  let cursor = 48, maxX = 720, hiddenFamilies = 0;
+  const ROW = 106;
+  const visibleChildren = id => (children.get(id) || []).filter(child => included.has(child.id));
+  const shownChildren = id => expandedIds.has(id) ? visibleChildren(id) : visibleChildren(id).slice(0, Math.max(1, childLimit));
+  function measure(id, seen = new Set()) {
+    if (seen.has(id) || seen.size > 32) return 0;
+    const next = new Set([...seen, id]);
+    return Math.max(1, shownChildren(id).reduce((sum, child) => sum + measure(child.id, next), 0) + (shownChildren(id).length < visibleChildren(id).length ? 1 : 0));
+  }
+  function place(id, depth, top, ancestors = new Set()) {
+    if (placed.has(id) || ancestors.has(id) || depth > 32) return;
+    placed.add(id);
+    const node = nodes.get(id), height = measure(id, ancestors) * ROW;
+    const x = 458 + depth * 242, y = top + Math.max(ROW, height) / 2 - 39;
+    positioned.push({ ...node, x, y, width: 214, height: 78 });
+    maxX = Math.max(maxX, x + 254);
+    let childTop = top;
+    const next = new Set([...ancestors, id]);
+    for (const child of shownChildren(id)) { place(child.id, depth + 1, childTop, next); childTop += measure(child.id, next) * ROW; }
+    const remaining = visibleChildren(id).length - shownChildren(id).length;
+    if (remaining > 0) moreGroups.push({ parentId: id, count: remaining, x: x + 242, y: childTop + 23, width: 214, height: 42 });
+  }
+  const providers = [...nodes.values()].filter(node => node.kind === 'provider' && allowed(node)).sort((a, b) => a.id.localeCompare(b.id));
+  for (const source of providers) {
+    const candidates = visibleRuns.map(id => nodes.get(id)).filter(node => node.provider === source.provider);
+    const roots = candidates.filter(node => {
+      const parent = incoming.get(node.id);
+      return !parent || parent.kind !== 'parent-child' || !included.has(parent.source);
+    }).sort(order);
+    // Malformed cyclic input still gets a finite, inspectable layout.
+    if (!roots.length && candidates.length) roots.push([...candidates].sort(order)[0]);
+    const shown = roots.slice(0, Math.max(1, familyLimit));
+    hiddenFamilies += Math.max(0, roots.length - shown.length);
+    const clusterStart = cursor;
+    for (const root of shown) { place(root.id, 0, cursor); cursor += Math.max(1, measure(root.id)) * ROW + 30; }
+    cursor = Math.max(cursor, clusterStart + 142);
+    positioned.push({ ...source, x: 220, y: clusterStart + (cursor - clusterStart) / 2 - 39, width: 184, height: 78 });
+    placed.add(source.id);
+    cursor += 64;
+  }
+  const height = Math.max(340, cursor + 20);
+  for (const node of [...nodes.values()].filter(node => node.kind === 'workspace').sort((a, b) => a.id.localeCompare(b.id))) {
+    positioned.push({ ...node, x: 16, y: height / 2 - 42, width: 168, height: 84 }); placed.add(node.id);
+  }
+  positioned.sort((a, b) => a.x - b.x || a.y - b.y || a.id.localeCompare(b.id));
+  const outputEdges = edges.filter(edge => placed.has(edge.source) && placed.has(edge.target)).map(edge => {
+    const a = positioned.find(node => node.id === edge.source), b = positioned.find(node => node.id === edge.target);
+    const x1 = a.x + a.width, y1 = a.y + a.height / 2, x2 = b.x, y2 = b.y + b.height / 2;
+    const bend = Math.max(30, Math.abs(x2 - x1) / 2);
+    return { ...edge, path: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}` };
+  }).sort((a, b) => a.id.localeCompare(b.id));
+  return { width: maxX, height, nodes: positioned, edges: outputEdges, moreGroups, hiddenCount: visibleRuns.filter(id => !placed.has(id)).length, hiddenFamilies, visibleRuns: visibleRuns.filter(id => placed.has(id)).length, matchingRuns: visibleRuns.length };
+}

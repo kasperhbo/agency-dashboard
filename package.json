@@ -1,0 +1,36 @@
+{
+  "name": "agency-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc -b && vite build",
+    "start": "node server/index.mjs",
+    "test": "node --test server/*.test.mjs",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-include=server/topology.mjs --test-coverage-include=shared/topology-layout.mjs --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=90 --test server/*.test.mjs",
+    "audit:usage": "node scripts/audit-usage.mjs",
+    "test:staging": "node scripts/staging-check.mjs",
+    "deploy:staging": "node scripts/deploy-staging.mjs deploy",
+    "test:e2e": "npm run build && node scripts/browser-tests.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "~5.9.3",
+    "vite": "^6.4.0"
+  }
+}

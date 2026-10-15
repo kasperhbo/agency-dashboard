@@ -1,0 +1,22 @@
+# Positive build-context allowlist. Private roots and logs never enter the context.
+**
+!package.json
+!package-lock.json
+!index.html
+!tsconfig.json
+!vite.config.ts
+!src/
+!src/**
+!public/
+!public/**
+!shared/
+!shared/**
+!server/
+!server/*.mjs
+!scripts/
+!scripts/staging-server.mjs
+!scripts/staging-fixtures.mjs
+**/*.test.mjs
+**/*.jsonl
+**/.env*
+**/*.log

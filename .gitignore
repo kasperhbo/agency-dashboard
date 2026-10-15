@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.agency/
+playwright-report/
+test-results/
+*.log
+*.tsbuildinfo
+.env*
+!.env.example
+.claude/
+.codex/
+.remember/
+coverage/

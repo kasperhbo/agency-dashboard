@@ -1,0 +1,95 @@
+name: Manual staging deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_image:
+        description: Publish the synthetic-fixture image to GHCR (requires ENABLE_GHCR=true)
+        type: boolean
+        default: false
+      deploy_private_runner:
+        description: Deploy on the configured private staging runner (requires ENABLE_PRIVATE_STAGING=true)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agency-manual-staging
+  cancel-in-progress: false
+
+jobs:
+  prerequisites:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check explicit deployment configuration
+        env:
+          PUBLISH_IMAGE: ${{ inputs.publish_image }}
+          DEPLOY_RUNNER: ${{ inputs.deploy_private_runner }}
+          ENABLE_GHCR: ${{ vars.ENABLE_GHCR }}
+          ENABLE_PRIVATE_STAGING: ${{ vars.ENABLE_PRIVATE_STAGING }}
+          STAGING_ROOT: ${{ vars.AGENCY_STAGING_ROOT }}
+        run: |
+          if [ "$PUBLISH_IMAGE" = true ] && [ "$ENABLE_GHCR" != true ]; then echo 'Set repository variable ENABLE_GHCR=true after choosing image visibility.'; exit 1; fi
+          if [ "$DEPLOY_RUNNER" = true ] && { [ "$ENABLE_PRIVATE_STAGING" != true ] || [ -z "$STAGING_ROOT" ]; }; then echo 'Configure the private runner, staging environment, ENABLE_PRIVATE_STAGING=true and absolute AGENCY_STAGING_ROOT first.'; exit 1; fi
+          if [ "$PUBLISH_IMAGE" != true ] && [ "$DEPLOY_RUNNER" != true ]; then echo 'No deployment requested; select an explicit workflow input.'; exit 1; fi
+
+  image:
+    needs: prerequisites
+    if: inputs.publish_image
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: type=sha,format=long,prefix=
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: BUILD_SHA=${{ github.sha }}
+
+  private-staging:
+    needs: prerequisites
+    if: inputs.deploy_private_runner && github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    runs-on: [self-hosted, Windows, agency-staging]
+    environment: staging
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      PLAYWRIGHT_HTML_OPEN: never
+      AGENCY_STAGING_ROOT: ${{ vars.AGENCY_STAGING_ROOT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Require persistent data outside the checkout
+        run: node --input-type=module -e "import path from 'node:path'; const p=process.env.AGENCY_STAGING_ROOT; const r=path.resolve(p || '.'); if(!p || !path.isAbsolute(p) || r===process.cwd() || r.startsWith(process.cwd()+path.sep)) throw Error('AGENCY_STAGING_ROOT must be absolute and outside the checkout');"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/deploy-staging.mjs deploy
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: private-staging-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
