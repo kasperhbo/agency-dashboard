@@ -41,6 +41,31 @@ test('folder-first layout starts at folders and keeps nested descendants under t
   }
 });
 
+test('old error and completed runs age out at 24 hours while recent or undated runs remain', () => {
+  const now = Date.parse('2026-10-16T12:00:00.000Z');
+  const runs = [
+    node('old-error', 'session', { provider: 'claude', status: 'error', updatedAt: '2026-10-15T12:00:00.000Z' }),
+    node('old-complete', 'session', { provider: 'claude', status: 'completed', updatedAt: '2026-10-15T11:59:59.999Z' }),
+    node('fresh-error', 'session', { provider: 'claude', status: 'error', updatedAt: '2026-10-15T12:00:00.001Z' }),
+    node('fresh-complete', 'session', { provider: 'claude', status: 'completed', updatedAt: '2026-10-16T11:59:00.000Z' }),
+    node('undated-complete', 'session', { provider: 'claude', status: 'completed' }),
+  ];
+  const folder = node('folder', 'folder');
+  for (const run of runs) run.folderId = folder.id;
+  const result = layoutTopology({ nodes: [folder, ...runs], edges: runs.map(run => edge('folder', run.id)) }, { now, familyLimit: 10 });
+  assert.deepEqual(result.nodes.filter(item => item.kind !== 'folder').map(item => item.id).sort(), ['fresh-complete', 'fresh-error', 'undated-complete']);
+  assert.equal(result.matchingRuns, 3);
+});
+
+test('a recent descendant stays visible beneath its folder when its old parent is filtered', () => {
+  const folder = node('folder', 'folder');
+  const parent = node('old-parent', 'session', { provider: 'claude', folderId: 'folder', status: 'completed', updatedAt: '2026-10-15T11:00:00.000Z' });
+  const child = node('recent-child', 'subagent', { provider: 'claude', folderId: 'folder', status: 'running', updatedAt: '2026-10-16T11:00:00.000Z' });
+  const result = layoutTopology({ nodes: [folder, parent, child], edges: [edge('folder', parent.id), edge(parent.id, child.id, 'parent-child')] }, { now: Date.parse('2026-10-16T12:00:00.000Z') });
+  assert.deepEqual(result.nodes.map(item => item.id).sort(), ['folder', 'recent-child']);
+  assert.deepEqual(result.edges.map(({ source, target, kind, evidence }) => ({ source, target, kind, evidence })), [{ source: 'folder', target: 'recent-child', kind: 'membership', evidence: 'folder' }]);
+});
+
 test('search and activity filtering retain the matching child’s ancestors, not unrelated runs', () => {
   const result = layoutTopology(graph, { query: 'build tests', activeOnly: true });
   assert.deepEqual(result.nodes.filter(item => ['session', 'subagent'].includes(item.kind)).map(item => item.id).sort(), ['child', 'parent']);

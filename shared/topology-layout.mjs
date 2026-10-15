@@ -4,7 +4,7 @@ const order = (a, b) => rank(a) - rank(b) || String(b.updatedAt || '').localeCom
 
 /** Deterministic, bounded tree layout. Membership and lineage remain separate. */
 export function layoutTopology(graph, options = {}) {
-  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [] } = options;
+  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [], now = Date.now() } = options;
   const expandedIds = new Set(expanded);
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
   const folderMode = graph.nodes.some(node => node.kind === 'folder');
@@ -21,12 +21,17 @@ export function layoutTopology(graph, options = {}) {
   for (const [id, list] of children) children.set(id, [...new Map(list.map(node => [node.id, node])).values()].sort(order));
   const search = query.toLowerCase().trim();
   const inScope = node => allowed(node) && (project === 'all' || node.project === project) && (folder === 'all' || node.folderId === folder);
-  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && inScope(node) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.workingDirectory || ''} ${nodes.get(node.folderId)?.workingDirectory || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
+  const historyVisible = node => {
+    if (!['error', 'completed'].includes(node.status)) return true;
+    const updatedAt = Date.parse(node.updatedAt || '');
+    return !Number.isFinite(updatedAt) || now - updatedAt < 24 * 60 * 60 * 1000;
+  };
+  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && inScope(node) && historyVisible(node) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.workingDirectory || ''} ${nodes.get(node.folderId)?.workingDirectory || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
   const included = new Set(matches.map(node => node.id));
   if (search && !activeOnly) {
     const queue = [...included];
     while (queue.length) for (const child of children.get(queue.shift()) || []) {
-      if (!included.has(child.id) && inScope(child)) { included.add(child.id); queue.push(child.id); }
+      if (!included.has(child.id) && inScope(child) && historyVisible(child)) { included.add(child.id); queue.push(child.id); }
     }
   }
   for (const match of [...included]) {
@@ -35,8 +40,19 @@ export function layoutTopology(graph, options = {}) {
     while (incoming.has(id)) {
       const ancestor = nodes.get(incoming.get(id).source);
       if (seen.has(ancestor.id) || !allowed(ancestor)) break;
+      if (runs.has(ancestor.kind) && !historyVisible(ancestor)) break;
       included.add(ancestor.id); seen.add(ancestor.id); id = ancestor.id;
     }
+  }
+  // If a filtered historical parent separates a visible descendant from its folder,
+  // connect that first visible descendant to the same folder in this filtered view.
+  for (const id of included) {
+    const parentLink = incoming.get(id);
+    const run = nodes.get(id);
+    const folderId = run.folderId;
+    if (!runs.has(run.kind) || !folderId || !parentLink || parentLink.kind !== 'parent-child' || included.has(parentLink.source)) continue;
+    const folderNode = nodes.get(folderId);
+    if (folderNode && !edges.some(edge => edge.source === folderId && edge.target === id)) edges.push({ id: `filtered-folder:${folderId}:${id}`, source: folderId, target: id, kind: 'membership', evidence: 'folder', animated: false });
   }
   const visibleRuns = [...included].filter(id => runs.has(nodes.get(id).kind));
   const positioned = [], moreGroups = [], placed = new Set();

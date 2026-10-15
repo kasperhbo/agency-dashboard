@@ -3,7 +3,7 @@
 Goal: an animated, inspectable view of Claude/Codex parents and subagents, backed by a real API, meaningful unit/functional coverage, and a reproducible staging deployment.
 
 ## Design
-Reuse the existing graphite/lavender workspace and provider colors. The graph reads left to right from recorded working folder to top-level session and recursively to log-linked subagents. Provider remains visible on each run and available as a filter. Folder identity uses the complete normalized path, so equal leaf names in different locations stay distinct. Selecting a node highlights its immediate neighborhood and opens an inspector. Folder/provider/project/search/activity filtering, bounded family expansion, pan/zoom, a list alternative, pause, and reduced motion keep large snapshots usable.
+Reuse the existing graphite/lavender workspace and provider colors. The graph reads left to right from recorded working folder to top-level session and recursively to log-linked subagents. Provider remains visible on each run and available as a filter. Folder identity uses the complete normalized path, so equal leaf names in different locations stay distinct. Error and completed runs with no log update in the past 24 hours are hidden; when a visible child has an old parent, the filtered view keeps the child grouped under its folder. Selecting a node highlights its immediate neighborhood and opens an inspector. Folder/provider/project/search/activity filtering, bounded family expansion, pan/zoom, a list alternative, pause, and reduced motion keep large snapshots usable.
 
 ## Ownership and invariants
 - `server/topology.mjs` normalizes and deduplicates the graph; `GET /api/topology` and cached session snapshots share the same data.

@@ -71,6 +71,7 @@ Design: [docs/design.md](docs/design.md). Execution: implement inline in this se
 - [x] Group each top-level agent family under its recorded full folder path; retain nested parent-child links and each child's own folder detail.
 - [x] Normalize Windows paths safely across platforms, preserve POSIX case, and group unknown/relative folders explicitly.
 - [x] Render/filter folder roots in Overview and Agent network; keep provider identity on agent sessions.
+- [x] Hide error/completed runs after 24 hours since the last recorded log update while preserving visible descendant grouping.
 - [x] Verify API/layout unit coverage, browser interactions, mobile, and isolated staging fixtures.
 
 ### Folder hierarchy verification — 2026-10-16
