@@ -4,26 +4,29 @@ const order = (a, b) => rank(a) - rank(b) || String(b.updatedAt || '').localeCom
 
 /** Deterministic, bounded tree layout. Membership and lineage remain separate. */
 export function layoutTopology(graph, options = {}) {
-  const { provider = 'all', project = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [] } = options;
+  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [] } = options;
   const expandedIds = new Set(expanded);
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
-  const allowed = node => node.kind === 'workspace' || provider === 'all' || node.provider === provider;
+  const folderMode = graph.nodes.some(node => node.kind === 'folder');
+  const allowed = node => ['workspace', 'folder'].includes(node.kind) || provider === 'all' || node.provider === provider;
   const edges = graph.edges.filter(edge => nodes.has(edge.source) && nodes.has(edge.target) && edge.source !== edge.target);
   const incoming = new Map(), children = new Map();
+  const priority = edge => edge.kind === 'parent-child' ? 2 : nodes.get(edge.source).kind === 'folder' ? 1 : 0;
   for (const edge of [...edges].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (!incoming.has(edge.target) || (edge.kind === 'parent-child' && incoming.get(edge.target).kind !== 'parent-child')) incoming.set(edge.target, edge);
+    if (!incoming.has(edge.target) || priority(edge) > priority(incoming.get(edge.target))) incoming.set(edge.target, edge);
     if (edge.kind !== 'parent-child' || !runs.has(nodes.get(edge.source).kind) || !runs.has(nodes.get(edge.target).kind)) continue;
     if (!children.has(edge.source)) children.set(edge.source, []);
     children.get(edge.source).push(nodes.get(edge.target));
   }
   for (const [id, list] of children) children.set(id, [...new Map(list.map(node => [node.id, node])).values()].sort(order));
   const search = query.toLowerCase().trim();
-  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && allowed(node) && (project === 'all' || node.project === project) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
+  const inScope = node => allowed(node) && (project === 'all' || node.project === project) && (folder === 'all' || node.folderId === folder);
+  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && inScope(node) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.workingDirectory || ''} ${nodes.get(node.folderId)?.workingDirectory || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
   const included = new Set(matches.map(node => node.id));
   if (search && !activeOnly) {
     const queue = [...included];
     while (queue.length) for (const child of children.get(queue.shift()) || []) {
-      if (!included.has(child.id) && allowed(child) && (project === 'all' || child.project === project)) { included.add(child.id); queue.push(child.id); }
+      if (!included.has(child.id) && inScope(child)) { included.add(child.id); queue.push(child.id); }
     }
   }
   for (const match of [...included]) {
@@ -50,7 +53,7 @@ export function layoutTopology(graph, options = {}) {
     if (placed.has(id) || ancestors.has(id) || depth > 32) return;
     placed.add(id);
     const node = nodes.get(id), height = measure(id, ancestors) * ROW;
-    const x = 458 + depth * 242, y = top + Math.max(ROW, height) / 2 - 39;
+    const x = (folderMode ? 280 : 458) + depth * 242, y = top + Math.max(ROW, height) / 2 - 39;
     positioned.push({ ...node, x, y, width: 214, height: 78 });
     maxX = Math.max(maxX, x + 254);
     let childTop = top;
@@ -59,9 +62,10 @@ export function layoutTopology(graph, options = {}) {
     const remaining = visibleChildren(id).length - shownChildren(id).length;
     if (remaining > 0) moreGroups.push({ parentId: id, count: remaining, x: x + 242, y: childTop + 23, width: 214, height: 42 });
   }
-  const providers = [...nodes.values()].filter(node => node.kind === 'provider' && allowed(node)).sort((a, b) => a.id.localeCompare(b.id));
-  for (const source of providers) {
-    const candidates = visibleRuns.map(id => nodes.get(id)).filter(node => node.provider === source.provider);
+  const containers = [...nodes.values()].filter(node => node.kind === (folderMode ? 'folder' : 'provider') && allowed(node)).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+  for (const source of containers) {
+    const candidates = visibleRuns.map(id => nodes.get(id)).filter(node => folderMode ? node.folderId === source.id : node.provider === source.provider);
+    if (folderMode && !candidates.length) continue;
     const roots = candidates.filter(node => {
       const parent = incoming.get(node.id);
       return !parent || parent.kind !== 'parent-child' || !included.has(parent.source);
@@ -73,12 +77,12 @@ export function layoutTopology(graph, options = {}) {
     const clusterStart = cursor;
     for (const root of shown) { place(root.id, 0, cursor); cursor += Math.max(1, measure(root.id)) * ROW + 30; }
     cursor = Math.max(cursor, clusterStart + 142);
-    positioned.push({ ...source, x: 220, y: clusterStart + (cursor - clusterStart) / 2 - 39, width: 184, height: 78 });
+    positioned.push({ ...source, x: folderMode ? 24 : 220, y: clusterStart + (cursor - clusterStart) / 2 - 39, width: folderMode ? 214 : 184, height: 78 });
     placed.add(source.id);
     cursor += 64;
   }
   const height = Math.max(340, cursor + 20);
-  for (const node of [...nodes.values()].filter(node => node.kind === 'workspace').sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const node of [...nodes.values()].filter(node => !folderMode && node.kind === 'workspace').sort((a, b) => a.id.localeCompare(b.id))) {
     positioned.push({ ...node, x: 16, y: height / 2 - 42, width: 168, height: 84 }); placed.add(node.id);
   }
   positioned.sort((a, b) => a.x - b.x || a.y - b.y || a.id.localeCompare(b.id));

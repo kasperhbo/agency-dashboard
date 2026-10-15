@@ -160,6 +160,73 @@ test('a shared missing parent is one unresolved parent, and fixture provenance i
 });
 
 const parse = (provider, file, payloads) => parseSession(payloads.map(p => JSON.stringify(p)).join('\n'), provider, file, Date.parse(now), Date.parse(now));
+test('native parsers preserve full working directories without fabricating missing paths', () => {
+  for (const [provider, record] of [
+    ['claude', { type: 'user', sessionId: 'p', cwd: 'G:\\repos\\app', message: { content: 'fixture' } }],
+    ['codex', { type: 'session_meta', payload: { id: 'p', cwd: '/work/app' } }],
+  ]) {
+    const parsed = parse(provider, '/logs/p.jsonl', [record]);
+    assert.equal(parsed.workingDirectory, provider === 'claude' ? 'G:\\repos\\app' : '/work/app');
+  }
+  assert.equal(parse('codex', '/logs/p.jsonl', [{ type: 'session_meta', payload: { id: 'p', cwd: { invalid: true } } }]).workingDirectory, undefined);
+});
+
+test('folder roots group provider families by full directory and retain nested lineage', () => {
+  const graph = build(snapshot([
+    session('p', { workingDirectory: 'G:\\repos\\app' }),
+    session('other-provider', { provider: 'codex', workingDirectory: 'g:/REPOS/app/' }),
+    session('other-folder', { workingDirectory: 'G:/archive/app' }),
+    session('c', { kind: 'subagent', parentNativeId: 'p', workingDirectory: '/worker/elsewhere' }),
+    session('g', { kind: 'subagent', parentNativeId: 'c' }),
+  ]));
+  const folders = graph.nodes.filter(n => n.kind === 'folder');
+  assert.equal(folders.length, 2, 'child directories do not detach actual families');
+  assert.ok(folders.every(n => n.label === 'app'));
+  const byNative = Object.fromEntries(runs(graph).map(n => [n.nativeId, n]));
+  assert.equal(byNative.p.folderId, byNative['other-provider'].folderId);
+  assert.notEqual(byNative.p.folderId, byNative['other-folder'].folderId);
+  assert.equal(byNative.c.folderId, byNative.p.folderId);
+  assert.equal(byNative.g.folderId, byNative.p.folderId);
+  assert.equal(byNative.c.workingDirectory, '/worker/elsewhere');
+  for (const run of runs(graph)) {
+    const incoming = graph.edges.filter(e => e.target === run.id);
+    assert.equal(incoming.length, 1, 'each run has one structural parent');
+    assert.equal(incoming[0].kind, ['c', 'g'].includes(run.nativeId) ? 'parent-child' : 'membership');
+    if (incoming[0].kind === 'membership') assert.equal(incoming[0].evidence, 'folder');
+  }
+  assertResolved(graph);
+});
+
+test('POSIX case, unknown directories and missing parents remain distinct and truthful', () => {
+  const graph = build(snapshot([
+    session('upper', { workingDirectory: '/work/App' }), session('lower', { workingDirectory: '/work/app' }),
+    session('unknown'), session('relative', { workingDirectory: 'relative/app' }),
+    session('orphan', { kind: 'subagent', parentNativeId: 'absent', workingDirectory: '/known/child' }),
+  ]));
+  assert.equal(graph.nodes.filter(n => n.kind === 'folder').length, 3);
+  const byNative = Object.fromEntries(runs(graph).map(n => [n.nativeId, n]));
+  assert.notEqual(byNative.upper.folderId, byNative.lower.folderId);
+  assert.equal(byNative.unknown.folderId, byNative.relative.folderId);
+  assert.equal(byNative.orphan.folderId, byNative.unknown.folderId, 'missing parent cwd cannot be inferred from a child');
+  const unknown = graph.nodes.find(n => n.id === byNative.unknown.folderId);
+  assert.equal(unknown.label, 'Folder not recorded');
+  assert.equal(unknown.workingDirectory, undefined);
+  assert.ok(graph.coverage.notes.some(n => /directory/i.test(n)));
+  assertResolved(graph);
+});
+
+test('folder identity normalizes foreign OS paths without resolving on the server', () => {
+  const graph = build(snapshot([
+    session('a', { workingDirectory: '\\\\server\\share\\app\\.' }),
+    session('b', { workingDirectory: '//SERVER/share/app/' }),
+    session('c', { workingDirectory: '/work/a/../app/' }), session('d', { workingDirectory: '/work/app' }),
+  ]));
+  assert.equal(graph.nodes.filter(n => n.kind === 'folder').length, 2);
+  assert.deepEqual(graph, build({ ...snapshot([]), sessions: [...snapshot([
+    session('a', { workingDirectory: '\\\\server\\share\\app\\.' }), session('b', { workingDirectory: '//SERVER/share/app/' }),
+    session('c', { workingDirectory: '/work/a/../app/' }), session('d', { workingDirectory: '/work/app' }),
+  ]).sessions].reverse() }));
+});
 test('Claude path-only children have distinct native IDs and metadata parent evidence', () => {
   const records = [{ type: 'user', sessionId: 'parent', message: { content: 'fixture' } }];
   const a = parse('claude', '/logs/parent/subagents/agent-first.jsonl', records);

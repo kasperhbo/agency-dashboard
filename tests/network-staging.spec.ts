@@ -9,12 +9,16 @@ test('staging serves the built API with isolated native-log fixtures and matchin
   expect(healthResponse.ok()).toBe(true);
   const health = await healthResponse.json();
   expect(health).toMatchObject({ ok: true, environment: 'staging', dataSource: 'fixture' });
+  const privateUsage = await request.get(staging + '/api/claude-usage?refresh=1');
+  expect(privateUsage.ok()).toBe(true);
+  expect(await privateUsage.json()).toMatchObject({ status: 'unavailable', limits: null, reason: expect.stringMatching(/disabled/i) });
   if (process.env.GITHUB_SHA) expect(health.buildSha).toBe(process.env.GITHUB_SHA);
   const response = await request.get(staging + '/api/topology?mode=local');
   expect(response.ok()).toBe(true);
   const graph = await response.json();
   expect(graph.dataSource).toBe('fixture');
   expect(graph.summary).toMatchObject({ sessions: 2, subagents: 1, unresolvedParents: 0 });
+  expect(graph.nodes.filter((node: { kind: string }) => node.kind === 'folder')).toHaveLength(1);
   const child = graph.nodes.find((node: { kind: string }) => node.kind === 'subagent');
   const parentLink = graph.edges.find((edge: { kind: string; target: string }) => edge.kind === 'parent-child' && edge.target === child.id);
   expect(parentLink.evidence).toBe('log-parent');
@@ -22,6 +26,8 @@ test('staging serves the built API with isolated native-log fixtures and matchin
   await page.goto(staging + '/#network');
   await expect(page.getByText('Staging fixture network', { exact: true })).toBeVisible();
   await expect(page.locator('.network-node.subagent')).toHaveCount(1);
+  await expect(page.locator('.network-node.folder')).toHaveCount(1);
+  await expect(page.locator('.network-node.workspace, .network-node.provider')).toHaveCount(0);
   await page.locator('.network-node.subagent').click();
   const inspector = page.getByRole('complementary', { name: 'Agent inspector' });
   await expect(inspector.getByText('Reported parent', { exact: true })).toBeVisible();

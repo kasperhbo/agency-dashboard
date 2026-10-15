@@ -83,5 +83,5 @@ export function useWorkspace() {
     }
   }
   function resetDemo() { saveDemo(demoTasks); }
-  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing, error: mode === 'local' ? error : '', storageError, refresh, saveTask, deleteTask, resetDemo };
+  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing, error: mode === 'local' ? error : '', storageError, refresh, saveTask, deleteTask, resetDemo };
 }

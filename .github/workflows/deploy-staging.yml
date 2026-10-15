@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: agency-manual-staging
@@ -23,6 +24,18 @@ jobs:
   prerequisites:
     runs-on: ubuntu-latest
     steps:
+      - name: Require green CI for the exact commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'ci.yml', head_sha: context.sha,
+              event: 'push', status: 'completed', per_page: 20
+            });
+            if (!data.workflow_runs.some(run => run.head_sha === context.sha && run.conclusion === 'success')) {
+              core.setFailed('CI must succeed for this exact commit before staging deployment.');
+            }
       - name: Check explicit deployment configuration
         env:
           PUBLISH_IMAGE: ${{ inputs.publish_image }}

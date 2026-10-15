@@ -8,7 +8,7 @@ export function sampleTopology() {
     kind: parentNativeId ? 'subagent' : 'session',
     ...(parentNativeId ? { parentNativeId, parentEvidence: 'log-parent', name: title } : {}),
     model: provider === 'claude' ? 'claude-sonnet-4-6' : 'gpt-5.4',
-    project: 'Sample agency', startedAt: '2026-10-15T15:30:00.000Z', updatedAt: observedAt, lastActivityAt: observedAt,
+    project: 'Sample agency', workingDirectory: '/sample/agency', startedAt: '2026-10-15T15:30:00.000Z', updatedAt: observedAt, lastActivityAt: observedAt,
   });
   return buildTopology({
     dataSource: 'demo', observedAt,

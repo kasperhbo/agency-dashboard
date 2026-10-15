@@ -14,6 +14,7 @@ export async function startStaging({ directory, port = 4320, host = '127.0.0.1',
   await mkdir(directory, { recursive: true });
   const roots = await writeFixtures(path.join(directory, 'fixtures'));
   const server = createApp({
+    enableLiveClaudeUsage: false,
     roots,
     store: new TaskStore(path.join(directory, 'tasks.json')),
     discover: async fixtureRoots => ({ ...await discoverSessions(fixtureRoots), dataSource: 'fixture' }),

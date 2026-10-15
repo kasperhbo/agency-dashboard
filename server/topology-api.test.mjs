@@ -66,9 +66,9 @@ test('native log discovery exposes Claude and Codex lineage through the sessions
   await mkdir(path.join(claude, 'parent', 'subagents'), { recursive: true });
   await mkdir(codex);
   const write = (file, record) => writeFile(file, JSON.stringify(record) + '\n');
-  await write(path.join(claude, 'parent.jsonl'), { type: 'user', sessionId: 'parent', message: { content: 'Fixture parent' } });
+  await write(path.join(claude, 'parent.jsonl'), { type: 'user', sessionId: 'parent', cwd: '/fixture/project', message: { content: 'Fixture parent' } });
   await write(path.join(claude, 'parent', 'subagents', 'agent-child.jsonl'), { type: 'user', sessionId: 'parent', message: { content: 'Fixture child' } });
-  await write(path.join(codex, 'parent.jsonl'), { type: 'session_meta', payload: { id: 'parent', source: 'cli' } });
+  await write(path.join(codex, 'parent.jsonl'), { type: 'session_meta', payload: { id: 'parent', cwd: '/fixture/project', source: 'cli' } });
   await write(path.join(codex, 'child.jsonl'), { type: 'session_meta', payload: { id: 'child', agent_nickname: 'Curie', source: { subagent: { thread_spawn: { parent_thread_id: 'parent' } } } } });
   const base = await app(t, () => discoverSessions({ claude, codex }));
   const snapshot = await (await fetch(base + '/api/sessions')).json();
@@ -79,6 +79,10 @@ test('native log discovery exposes Claude and Codex lineage through the sessions
   const edge = snapshot.topology.edges.find(e => e.kind === 'parent-child' && e.target === child.id);
   assert.equal(edge.evidence, 'log-parent');
   assert.equal(snapshot.topology.nodes.find(n => n.id === edge.source).provider, 'codex');
+  const folders = snapshot.topology.nodes.filter(n => n.kind === 'folder');
+  assert.equal(folders.length, 1);
+  assert.equal(folders[0].workingDirectory, '/fixture/project');
+  assert.equal(child.folderId, folders[0].id);
 });
 
 test('topology rejects invalid, repeated, and filesystem query parameters before discovery', async t => {

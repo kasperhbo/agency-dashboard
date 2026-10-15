@@ -1,5 +1,17 @@
 import { test, expect } from '@playwright/test';
 
+test('overview includes the network preview and opens the full graph', async ({ page }) => {
+  await page.goto('/#overview');
+  await expect(page.getByRole('heading', { name: 'Agent network', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open agent network graph', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open full map', exact: true }).click();
+  await expect(page.locator('h1')).toHaveText('Agent network.');
+  await expect(page.locator('.network-node.subagent')).toHaveCount(3);
+  await expect(page.locator('.network-node.folder')).toHaveCount(1);
+  await expect(page.locator('.network-node.provider, .network-node.workspace')).toHaveCount(0);
+  await expect(page.locator('.network-connections [data-edge-kind="membership"][class*="membership"]')).toHaveCount(2);
+});
+
 test('network reads the real topology API and exposes recorded parent-child connections', async ({ page, request }) => {
   const response = await request.get('/api/topology?mode=demo');
   expect(response.ok()).toBe(true);
@@ -30,13 +42,14 @@ test('network filters preserve ancestors and provide keyboard/list inspection', 
   await page.goto('/#network');
   await page.getByRole('textbox', { name: 'Search agent network' }).fill('Interface builder');
   await expect(page.locator('.network-node.subagent')).toHaveCount(1);
-  await expect(page.getByRole('button', { name: /Select Parent session Design coordinator/ })).toBeVisible();
-  await page.getByRole('button', { name: /Select Parent session Design coordinator/ }).focus();
+  await expect(page.getByRole('button', { name: /Select Agent session Design coordinator/ })).toBeVisible();
+  await page.getByRole('button', { name: /Select Agent session Design coordinator/ }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('button', { name: /Select Subagent Interface builder/ })).toBeFocused();
   await page.getByRole('textbox', { name: 'Search agent network' }).fill('');
   await page.getByRole('combobox', { name: 'Network provider' }).selectOption('codex');
-  await expect(page.locator('.network-node.provider')).toHaveCount(1);
+  await expect(page.locator('.network-node.folder')).toHaveCount(1);
+  await expect(page.locator('.network-node.session.codex')).toHaveCount(1);
   await expect(page.locator('.network-node.claude')).toHaveCount(0);
   await page.getByRole('button', { name: 'Hierarchy list view' }).click();
   await expect(page.getByRole('list', { name: 'Agent hierarchy' }).getByRole('listitem')).toHaveCount(2);

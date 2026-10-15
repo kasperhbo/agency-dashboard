@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test';
 const metrics = (inputTokens: number | null, outputTokens: number | null, cacheReadTokens: number | null, cacheWriteTokens: number | null, reasoningTokens: number | null, totalTokens: number | null) => ({ inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, totalTokens });
 const unknown = metrics(null, null, null, null, null, null);
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/claude-usage*', route => route.fulfill({ json: { status: 'unavailable', limits: null, fetchedAt: null, reason: 'Fixture account usage unavailable. Use Claude /usage or sign in normally.' } }));
+});
+
 test.describe('real-data defaults and usage display', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test('new workspace uses local data and distinguishes UTC daily usage, cached tokens, unknowns, and stale quotas', async ({ page }) => {
@@ -33,7 +37,10 @@ test.describe('real-data defaults and usage display', () => {
     await expect(page.locator('.usage-summary article').first().locator('strong')).toHaveText('3K');
     await expect(page.getByText(/1 without usage/)).toBeVisible();
     await expect(page.getByText(/1 replayed responses removed/)).toBeVisible();
-    await expect(page.getByText('55% used')).toBeVisible();
+    await expect(page.getByText('55% used')).not.toBeVisible();
+    await expect(page.getByText('Waiting for a fresh report', { exact: true })).toBeVisible();
+    await page.getByText('Historical log report', { exact: true }).click();
+    await expect(page.getByText('55% used (historical)', { exact: true })).toBeVisible();
     await expect(page.getByText('Reset time passed. Current usage is unknown.')).toBeVisible();
     await expect(page.getByText('100,000 tokens', { exact: true })).toBeVisible();
     await expect(page.getByText('Reported credit balance:')).toContainText('0');

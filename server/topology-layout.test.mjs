@@ -20,6 +20,27 @@ test('layout positions children after their parent and retains both provider bra
   assert.equal(result.hiddenCount, 0);
 });
 
+test('folder-first layout starts at folders and keeps nested descendants under their real parent', () => {
+  const folderGraph = {
+    nodes: [...graph.nodes.map(n => ['parent', 'child', 'other'].includes(n.id) ? { ...n, folderId: 'folder' } : n), node('folder', 'folder', { workingDirectory: '/work/app' }), node('grandchild', 'subagent', { provider: 'claude', folderId: 'folder', label: 'Nested worker' })],
+    edges: [...graph.edges, edge('folder', 'parent'), edge('folder', 'other'), edge('child', 'grandchild', 'parent-child')],
+  };
+  const result = layoutTopology(folderGraph);
+  assert.equal(result.nodes.some(n => ['workspace', 'provider'].includes(n.kind)), false);
+  const byId = Object.fromEntries(result.nodes.map(n => [n.id, n]));
+  assert.ok(byId.folder.x < byId.parent.x);
+  assert.ok(byId.parent.x < byId.child.x);
+  assert.ok(byId.child.x < byId.grandchild.x);
+  assert.equal(result.edges.length, 4);
+  const filtered = layoutTopology(folderGraph, { provider: 'claude', folder: 'folder', query: 'Nested worker' });
+  assert.deepEqual(filtered.nodes.map(n => n.id).sort(), ['child', 'folder', 'grandchild', 'parent']);
+  assert.equal(layoutTopology(folderGraph, { folder: 'absent' }).visibleRuns, 0);
+  for (let i = 0; i < result.nodes.length; i++) for (const b of result.nodes.slice(i + 1)) {
+    const a = result.nodes[i];
+    assert.ok(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y, 'node boxes do not overlap');
+  }
+});
+
 test('search and activity filtering retain the matching child’s ancestors, not unrelated runs', () => {
   const result = layoutTopology(graph, { query: 'build tests', activeOnly: true });
   assert.deepEqual(result.nodes.filter(item => ['session', 'subagent'].includes(item.kind)).map(item => item.id).sort(), ['child', 'parent']);

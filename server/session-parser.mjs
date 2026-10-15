@@ -141,6 +141,7 @@ export class SessionParser {
     const session = {
       id: this.id, nativeId, provider: this.provider,
       title: this.title || `${this.provider === 'claude' ? 'Claude' : 'Codex'} session`, project: basename(this.cwd), model: this.model, status,
+      ...(typeof this.cwd === 'string' && this.cwd.trim() && !/[\x00-\x1f\x7f]/.test(this.cwd) ? { workingDirectory: this.cwd } : {}),
       kind: this.subagent ? 'subagent' : 'session', ...(this.subagent ? { name: this.agentName || `${this.provider === 'claude' ? 'Claude' : 'Codex'} subagent` } : {}),
       ...(parentNativeId ? { parentNativeId, parentEvidence: this.provider === 'claude' && !this.nativeId ? 'path-parent' : 'log-parent' } : {}),
       startedAt: iso(this.started ?? this.modified), updatedAt: iso(this.updated ?? this.modified), lastActivityAt: iso(this.lastActivity ?? this.modified), timestampSource: this.updated === null ? 'file' : 'log',

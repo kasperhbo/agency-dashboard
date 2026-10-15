@@ -65,3 +65,17 @@ Design: [docs/design.md](docs/design.md). Execution: implement inline in this se
 - Physical logs, unique sessions, subagents, replayed responses, and duplicated threads are counted separately. Inconsistent counters remain explicitly partial/lower-bound.
 - Evidence and boundaries: [docs/data-audit.md](docs/data-audit.md). Estimates are not bills; provider limits are timestamped snapshots; historical scan caps remain visible.
 - Previews: `docs/screenshots/usage.png` and `docs/screenshots/usage-mobile.png`, using explicitly labeled sample data.
+
+## Agent network folder hierarchy
+- [x] Preserve native Claude/Codex working-directory metadata through the topology API.
+- [x] Group each top-level agent family under its recorded full folder path; retain nested parent-child links and each child's own folder detail.
+- [x] Normalize Windows paths safely across platforms, preserve POSIX case, and group unknown/relative folders explicitly.
+- [x] Render/filter folder roots in Overview and Agent network; keep provider identity on agent sessions.
+- [x] Verify API/layout unit coverage, browser interactions, mobile, and isolated staging fixtures.
+
+### Folder hierarchy verification — 2026-10-16
+- `npm run test:coverage`: 72 passed; topology/layout combined line coverage 97.94%.
+- `npm run test:e2e`: 24 passed, 4 staging-only cases skipped.
+- `npm run test:staging`: 3 passed against generated isolated fixtures.
+- `npm run build`: passed.
+- Local dev API health and topology endpoint respond; the page accepts the folder-node graph schema.

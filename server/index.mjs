@@ -7,12 +7,14 @@ import { discoverSessions } from './sessions.mjs';
 import { TaskStore, HttpError } from './store.mjs';
 import { buildTopology } from './topology.mjs';
 import { sampleTopology } from './topology-demo.mjs';
+import { createClaudeAccountUsage } from './claude-account-usage.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const defaultRoots = { claude: path.join(homedir(), '.claude', 'projects'), codex: path.join(process.env.CODEX_HOME || path.join(homedir(), '.codex'), 'sessions') };
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
 
-export function createApp({ store = new TaskStore(path.join(projectRoot, '.agency', 'tasks.json')), roots = { claude: process.env.AGENCY_CLAUDE_ROOT || defaultRoots.claude, codex: process.env.AGENCY_CODEX_ROOT || defaultRoots.codex }, discover = discoverSessions } = {}) {
+export function createApp({ store = new TaskStore(path.join(projectRoot, '.agency', 'tasks.json')), roots = { claude: process.env.AGENCY_CLAUDE_ROOT || defaultRoots.claude, codex: process.env.AGENCY_CODEX_ROOT || defaultRoots.codex }, discover = discoverSessions, enableLiveClaudeUsage = true, accountUsageFetcher } = {}) {
+  const accountUsage = enableLiveClaudeUsage ? accountUsageFetcher || createClaudeAccountUsage() : null;
   let snapshot, expires = 0, scanning;
   async function sessions() {
     if (snapshot && Date.now() < expires) return snapshot;
@@ -37,6 +39,13 @@ export function createApp({ store = new TaskStore(path.join(projectRoot, '.agenc
       if (origin && !allowed.has(origin)) throw new HttpError(403, 'Origin is not allowed.');
       const url = new URL(req.url, `http://${host}`);
       if (url.pathname.startsWith('/api/')) {
+        if (url.pathname === '/api/claude-usage') {
+          if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed.');
+          if ([...url.searchParams.keys()].some(key => key !== 'refresh') || url.searchParams.getAll('refresh').length > 1 || (url.searchParams.has('refresh') && url.searchParams.get('refresh') !== '1')) throw new HttpError(400, 'Only refresh=1 is accepted.');
+          if (!accountUsage) return json(200, { status: 'unavailable', limits: null, fetchedAt: null, reason: 'Live Claude account usage is disabled on this server.' });
+          try { return json(200, await accountUsage({ refresh: url.searchParams.has('refresh') })); }
+          catch { return json(200, { status: 'error', limits: null, fetchedAt: null, reason: 'Claude account usage could not be read. Use Claude /usage or sign in normally.' }); }
+        }
         if (req.method === 'GET' && url.pathname === '/api/sessions') return json(200, await sessions());
         if (req.method === 'GET' && url.pathname === '/api/topology') {
           if ([...url.searchParams.keys()].some(key => key !== 'mode') || url.searchParams.getAll('mode').length > 1) throw new HttpError(400, 'Only one mode parameter is accepted.');

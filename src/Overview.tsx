@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Activity, ArrowRight, ArrowUpRight, Check, CheckCheck, ChevronRight, Clock3, Code2, Folder, Layers3, Plus, Sparkles, Zap } from 'lucide-react';
 import { EmptyState, ProviderMark, SectionHeading, SessionCard, TaskRow } from './components';
-import { compact, providerLabel, timeAgo, uniqueRuns, type Mode, type Page, type Session, type Task, type UsageReport } from './types';
+import { compact, providerLabel, timeAgo, uniqueRuns, type Mode, type Page, type Session, type Task, type UsageReport, type AgentTopology } from './types';
 import { UsageDashboard } from './Usage';
+import { NetworkOverview } from './NetworkPage';
 
 export function ActivityChart({ sessions, large = false }: { sessions: Session[]; large?: boolean }) {
   const [period, setPeriod] = useState('7d');
@@ -50,8 +51,8 @@ export function ActivityFeed({ sessions, onOpen, full = false, query = '', provi
   </button>)}</div>;
 }
 
-export function Overview({ sessions, tasks, usage, mode, onOpen, navigate, newTask, toggleTask, editTask, busyTask, connect }: {
-  sessions: Session[]; tasks: Task[]; usage: UsageReport | undefined; mode: Mode; onOpen: (s: Session) => void; navigate: (p: Page) => void;
+export function Overview({ sessions, tasks, usage, topology, mode, onOpen, navigate, newTask, toggleTask, editTask, busyTask, connect }: {
+  sessions: Session[]; tasks: Task[]; usage: UsageReport | undefined; topology: AgentTopology | undefined; mode: Mode; onOpen: (s: Session) => void; navigate: (p: Page) => void;
   newTask: () => void; toggleTask: (task: Task) => void; editTask: (task: Task) => void; busyTask: string; connect: () => void;
 }) {
   const runs = uniqueRuns(sessions);
@@ -71,6 +72,7 @@ export function Overview({ sessions, tasks, usage, mode, onOpen, navigate, newTa
       <button className="summary-item usage-summary-button" onClick={() => navigate('insights')}><span className="summary-label">Recorded tokens today <span className="stat-icon blue"><Zap size={16} /></span></span><div className="summary-value">{compact(tokens)}<span className="stat-context">recorded</span></div><span className="summary-note">UTC · deduplicated · see usage <ArrowUpRight size={12} /></span></button>
       <button className="summary-item attention-summary" onClick={() => attention.length ? onOpen(attention[0]) : navigate('agents')}><span className="summary-label">Needs your attention <span className="stat-icon amber"><Clock3 size={17} /></span></span><div className="summary-value">{attention.length}<span className="stat-context amber-text">{attention.length ? 'A quick look' : 'All clear'}</span></div><span className="summary-note">{attention.length ? 'Your agents could use a hand' : 'Nothing waiting for you'}<ArrowUpRight size={13} /></span></button>
     </div>
+    <NetworkOverview mode={mode} topology={topology} onOpen={() => navigate('network')} />
     <div className="overview-columns"><div className="overview-main">
       <section className="agents-section"><SectionHeading title="In the loop" count={active.length} description="A little teamwork. A lot of forward motion." action={<button className="text-button" onClick={() => navigate('agents')}>All agents <ArrowRight size={14} /></button>} />
         {active.length ? <div className="agent-grid">{active.slice(0, 4).map(session => <SessionCard key={session.id} session={session} mode={mode} onOpen={() => onOpen(session)} />)}</div> : <div className="panel"><EmptyState title={sessions.length ? 'Your agents are taking a breather' : 'Your workspace starts here'} description={sessions.length ? 'Recent sessions are in the Agents view. Start work in Claude or Codex and it will appear here.' : 'Run Claude Code or Codex on this computer. Agency reads their local session logs automatically.'} action={<button className="button secondary" onClick={() => navigate('agents')}>Explore sessions <ArrowRight size={15} /></button>} /></div>}

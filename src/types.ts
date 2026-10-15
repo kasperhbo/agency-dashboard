@@ -10,6 +10,7 @@ export interface Session {
   tokens: number | null; events: AgentEvent[]; partial: boolean; name?: string;
   kind?: 'session' | 'subagent'; parentNativeId?: string; lastActivityAt?: string; timestampSource?: 'file' | 'log';
   usage?: SessionUsage;
+  workingDirectory?: string;
 }
 export interface Task {
   id: string; title: string; description: string; project: string; provider: Provider;
@@ -38,15 +39,16 @@ export interface ProviderUsage extends UsageMetrics {
   duplicateRecordsRemoved: number; duplicateThreadsRemoved: number; limits: LimitSnapshot | null; context: ContextSnapshot | null;
 }
 export interface UsageReport extends UsageMetrics { providers: ProviderUsage[]; daily: UsageDay[]; undatedTokens: number }
-export interface Snapshot { sessions: Session[]; sources: Source[]; scannedAt: string; usage?: UsageReport }
+export interface Snapshot { sessions: Session[]; sources: Source[]; scannedAt: string; usage?: UsageReport; topology?: AgentTopology }
 export interface TopologyNode {
-  id: string; kind: 'workspace' | 'provider' | 'session' | 'subagent' | 'missing-parent'; label: string;
+  id: string; kind: 'workspace' | 'provider' | 'folder' | 'session' | 'subagent' | 'missing-parent'; label: string;
   provider?: Provider; status?: SessionStatus; availability?: 'connected' | 'not_found' | 'error';
   sessionId?: string; nativeId?: string; parentNativeId?: string; model?: string; project?: string; tokens?: number | null; updatedAt?: string;
+  workingDirectory?: string; folderId?: string;
 }
 export interface TopologyEdge {
   id: string; source: string; target: string; kind: 'membership' | 'parent-child';
-  evidence: 'workspace' | 'provider' | 'log-parent' | 'path-parent' | 'missing-parent'; animated: boolean;
+  evidence: 'workspace' | 'provider' | 'folder' | 'log-parent' | 'path-parent' | 'missing-parent'; animated: boolean;
 }
 export interface AgentTopology {
   version: 1; observedAt: string; dataSource: 'local' | 'demo' | 'fixture';
