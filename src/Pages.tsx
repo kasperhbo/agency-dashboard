@@ -54,6 +54,7 @@ export function AgentsPage({ sessions, mode, sessionObserved, onOpen, onOpenSett
 export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask, busyTask }: { tasks: Task[]; sessions: Session[]; onOpen: (session: Session) => void; newTask: (status?: TaskStatus) => void; editTask: (task: Task) => void; moveTask: (task: Task, status: TaskStatus) => void; busyTask: string }) {
   const [query, setQuery] = useState(''), [provider, setProvider] = useState('all');
   const [priority, setPriority] = useState('all'), [sort, setSort] = useState('stored');
+  const [layout, setLayout] = useState<'board' | 'list'>('board');
   const filtered = tasks.filter(t => (provider === 'all' || t.provider === provider) && (priority === 'all' || t.priority === priority) && `${t.title} ${t.project} ${t.description}`.toLowerCase().includes(query.toLowerCase()));
   if (sort !== 'stored') filtered.sort(sort === 'priority' ? compareTaskPriority : compareTaskRecent);
   const hasFilters = Boolean(query || provider !== 'all' || priority !== 'all');
@@ -61,10 +62,11 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
     <FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Find a task…">
       <select aria-label="Task priority" value={priority} onChange={event => setPriority(event.target.value)}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></select>
       <select aria-label="Task ordering" value={sort} onChange={event => setSort(event.target.value)}><option value="stored">Stored order</option><option value="priority">Priority: high first</option><option value="recent">Recently updated</option></select>
+      <div className="view-switch" role="group" aria-label="Task layout"><button aria-label="Board view" aria-pressed={layout === 'board'} onClick={() => setLayout('board')}><LayoutGrid size={16} /></button><button aria-label="List view" aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={17} /></button></div>
       {(hasFilters || sort !== 'stored') && <button className="text-button" onClick={() => { setQuery(''); setProvider('all'); setPriority('all'); setSort('stored'); }}>Reset task filters</button>}
       <span className="filter-count">{filtered.length} task{filtered.length !== 1 ? 's' : ''}</span>
     </FilterBar>
-    <div className="kanban-board">{(['todo', 'in_progress', 'done'] as TaskStatus[]).map(status => <section className={`kanban-column ${status}`} key={status}>
+    {layout === 'board' ? <div className="kanban-board">{(['todo', 'in_progress', 'done'] as TaskStatus[]).map(status => <section className={`kanban-column ${status}`} key={status}>
       <header><span><i />{taskStatusLabel[status]}<b>{filtered.filter(t => t.status === status).length}</b></span><button className="icon-button" aria-label={`Add ${taskStatusLabel[status].toLowerCase()} task`} onClick={() => newTask(status)}><Plus size={17} /></button></header>
       <div className="kanban-tasks">{filtered.filter(t => t.status === status).map(task => {
         const linked = sessions.find(session => session.id === task.sessionId && session.provider === task.provider);
@@ -76,7 +78,10 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
           <div className="kanban-footer"><span><ProviderMark provider={task.provider} small />{providerLabel(task.provider)}</span><label className="status-select"><span className="sr-only">Status of {task.title}</span><select value={task.status} disabled={busyTask === task.id} onChange={e => moveTask(task, e.target.value as TaskStatus)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select>{busyTask === task.id ? <LoaderCircle size={12} className="spin" /> : <ChevronDown size={12} />}</label></div>
         </article>;
       })}{!filtered.some(t => t.status === status) && <div className="column-empty"><Check size={19} /><span>{hasFilters ? 'No matching tasks' : status === 'done' ? 'Good things take small steps.' : 'Room for your next idea.'}</span></div>}<button className="kanban-add" onClick={() => newTask(status)}><Plus size={15} />Add task</button></div>
-    </section>)}</div>
+    </section>)}</div> : <section className="panel sessions-table-wrap task-list-wrap" aria-label="Tasks list"><table className="sessions-table"><thead><tr><th>Task</th><th>Project</th><th>Provider</th><th>Priority</th><th>Status</th><th>Session</th></tr></thead><tbody>{filtered.map(task => {
+      const linked = sessions.find(session => session.id === task.sessionId && session.provider === task.provider);
+      return <tr key={task.id}><td><button className="table-session" onClick={() => editTask(task)}><span><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</span></button></td><td>{task.project || 'No project'}</td><td><span className="task-list-provider"><ProviderMark provider={task.provider} small />{providerLabel(task.provider)}</span></td><td><span className={`priority ${task.priority}`}><i />{task.priority}</span></td><td><label className="status-select"><span className="sr-only">Status of {task.title}</span><select value={task.status} disabled={busyTask === task.id} onChange={event => moveTask(task, event.target.value as TaskStatus)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select>{busyTask === task.id ? <LoaderCircle size={12} className="spin" /> : <ChevronDown size={12} />}</label></td><td>{task.sessionId ? linked ? <button className="task-session-link" onClick={() => onOpen(linked)} aria-label={`Open linked session for ${task.title}`}><Link2 size={13} /><span>Open session</span><ArrowUpRight size={12} /></button> : <span className="task-session-unavailable"><Link2 size={13} />Unavailable</span> : <span>—</span>}</td></tr>;
+    })}</tbody></table>{!filtered.length && <EmptyState title={tasks.length ? 'No tasks match' : 'No tasks yet'} description={tasks.length ? 'Try another search or choose a different filter.' : 'Add a task from the board to start planning.'} />}</section>}
     <p className="page-footnote"><Info size={13} />Your board is a plan for your agents. Creating or moving a task does not execute it.</p>
   </>;
 }
