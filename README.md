@@ -68,6 +68,8 @@ Start a native session in Claude Code or Codex, then select Local workspace. Age
 
 On Windows, run Agency under the same account as your agents. A server started as another user reads that user's home directory, so current sessions can be missing even when Settings reports a connected source. Compare the resolved path in Settings with your agent's log directory; restart under the correct account or set the explicit roots below. Source environment changes require restarting the API.
 
+Settings includes a **Missing an expected session?** disclosure for each local provider, with root precedence and manual recovery guidance. Its snapshot timestamp shows when Agency checked the logs, independently of agent activity. Demo mode hides retained local connection paths; switch to Local workspace to inspect them. Connected means readable, not proof that a particular session or process is present.
+
 Custom roots are read from the server environment. PowerShell example:
 
 ```powershell
