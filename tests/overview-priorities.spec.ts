@@ -52,6 +52,19 @@ test('activity dates support keyboard and touch inspection with exact table valu
   await expect(chart.getByRole('table').locator('tbody tr')).toHaveCount(12);
 });
 
+test('rolling activity selection clears when its actual interval moves within the same two-hour slot', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-16T12:15:00Z') });
+  await page.goto('/');
+  const chart = page.locator('.chart-panel');
+  await page.getByRole('combobox', { name: 'Activity chart period' }).selectOption('24h');
+  await chart.locator('.chart-column').last().click();
+  await expect(chart.locator('[aria-pressed="true"]')).toHaveCount(1);
+  await page.mouse.move(0, 0);
+  await page.clock.fastForward(10000);
+  await expect(chart.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await expect(chart.getByRole('region', { name: 'Activity date details' })).toContainText('time interval changed');
+});
+
 test('observation freshness advances and distinguishes independent task failures', async ({ page }) => {
   const now = new Date('2026-10-16T12:00:00Z');
   await page.clock.install({ time: now });

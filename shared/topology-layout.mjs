@@ -4,7 +4,7 @@ const order = (a, b) => rank(a) - rank(b) || String(b.updatedAt || '').localeCom
 
 /** Deterministic, bounded tree layout. Membership and lineage remain separate. */
 export function layoutTopology(graph, options = {}) {
-  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [], now = Date.now() } = options;
+  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [], focusId, now = Date.now() } = options;
   const expandedIds = new Set(expanded);
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
   const folderMode = graph.nodes.some(node => node.kind === 'folder');
@@ -55,11 +55,18 @@ export function layoutTopology(graph, options = {}) {
     if (folderNode && !edges.some(edge => edge.source === folderId && edge.target === id)) edges.push({ id: `filtered-folder:${folderId}:${id}`, source: folderId, target: id, kind: 'membership', evidence: 'folder', animated: false });
   }
   const visibleRuns = [...included].filter(id => runs.has(nodes.get(id).kind));
+  // Reveal only the requested ancestor path; filters and normal collapse limits still apply.
+  const focusPath = new Set();
+  let focus = included.has(focusId) ? focusId : undefined;
+  while (focus && !focusPath.has(focus)) { focusPath.add(focus); focus = incoming.get(focus)?.source; }
   const positioned = [], moreGroups = [], placed = new Set();
   let cursor = 48, maxX = 720, hiddenFamilies = 0;
   const ROW = 106;
   const visibleChildren = id => (children.get(id) || []).filter(child => included.has(child.id));
-  const shownChildren = id => expandedIds.has(id) ? visibleChildren(id) : visibleChildren(id).slice(0, Math.max(1, childLimit));
+  const shownChildren = id => {
+    const all = visibleChildren(id);
+    return expandedIds.has(id) ? all : all.filter((child, index) => index < Math.max(1, childLimit) || focusPath.has(child.id));
+  };
   function measure(id, seen = new Set()) {
     if (seen.has(id) || seen.size > 32) return 0;
     const next = new Set([...seen, id]);
@@ -88,7 +95,7 @@ export function layoutTopology(graph, options = {}) {
     }).sort(order);
     // Malformed cyclic input still gets a finite, inspectable layout.
     if (!roots.length && candidates.length) roots.push([...candidates].sort(order)[0]);
-    const shown = roots.slice(0, Math.max(1, familyLimit));
+    const shown = roots.filter((root, index) => index < Math.max(1, familyLimit) || focusPath.has(root.id));
     hiddenFamilies += Math.max(0, roots.length - shown.length);
     const clusterStart = cursor;
     for (const root of shown) { place(root.id, 0, cursor); cursor += Math.max(1, measure(root.id)) * ROW + 30; }

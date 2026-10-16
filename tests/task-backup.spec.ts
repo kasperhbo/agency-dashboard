@@ -67,6 +67,26 @@ test('retained empty local snapshot is explicitly stale after failed refresh', a
   expect(backup.snapshot.lastSuccessfulReadAt).toBe(before.snapshot.lastSuccessfulReadAt);
 });
 
+test('successful mutation does not clear a failed list read or claim a fresh complete backup', async ({ page }) => {
+  const state = await fixture(page);
+  await expect(page.getByRole('button', { name: 'Download task JSON', exact: true })).toBeEnabled();
+  const before = await download(page);
+  state.fail();
+  await page.getByRole('button', { name: 'Check connections', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Task backup', exact: true });
+  await expect(panel).toContainText('retained snapshot is stale');
+  await page.route('**/api/tasks', route => route.request().method() === 'POST' ? route.fulfill({ json: { ...task, id: 'new-task', title: 'New confirmed task' } }) : route.fallback());
+  await page.getByRole('button', { name: 'New task', exact: true }).click();
+  await page.getByLabel('Task title', { exact: true }).fill('New confirmed task');
+  await page.getByRole('button', { name: 'Create task', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(panel).toContainText('retained snapshot is stale');
+  const after = await download(page);
+  expect(after.snapshot.status).toBe('stale');
+  expect(after.snapshot.lastSuccessfulReadAt).toBe(before.snapshot.lastSuccessfulReadAt);
+  expect(after.tasks.map((value: { id: string }) => value.id)).toEqual(['new-task', task.id]);
+});
+
 test('demo backup remains separate from retained local tasks and is usable on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await fixture(page);
@@ -83,4 +103,12 @@ test('old confirmed snapshot is stale and download caveat excludes unconfirmed w
   const backup = JSON.parse(taskBackup([], 'local', stamp, stamp, false, Date.parse(stamp) + 120001));
   expect(backup.snapshot.status).toBe('stale');
   expect(backup.snapshot.note).toContain('Unconfirmed writes are excluded');
+});
+
+test('recent mutation timestamp cannot renew an aged list snapshot', () => {
+  const now = Date.parse(stamp) + 130000;
+  const backup = JSON.parse(taskBackup([], 'local', stamp, new Date(now).toISOString(), false, now));
+  expect(backup.snapshot.status).toBe('stale');
+  expect(backup.snapshot.lastSuccessfulReadAt).toBe(stamp);
+  expect(backup.snapshot.lastConfirmedUpdateAt).toBe(new Date(now).toISOString());
 });

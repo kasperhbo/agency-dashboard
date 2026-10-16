@@ -43,9 +43,13 @@
 .network-stage { position: absolute; left: 0; top: 0; transform-origin: top left; }
 .network-connections { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
 .network-edge { stroke: #777287; stroke-width: 1.2; fill: none; opacity: .65; }
-.network-edge.membership { stroke: #656271; stroke-dasharray: 3 7; stroke-width: 1; opacity: .45; }
+.network-edge.membership { stroke: #9792a5; stroke-dasharray: 3 5; stroke-width: 1.4; opacity: .8; }
+.network-edge-key { display: flex; flex-wrap: wrap; gap: 12px 20px; padding: 12px 15px; border-top: 1px solid var(--border); background: var(--panel); }
+.network-edge-key > span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.network-locate { margin-top: 15px; width: 100%; font-size: 11px; }
 .network-edge.parent-child { stroke: #af9ce4; stroke-width: 1.6; opacity: .8; }
 .network-edge.is-active { stroke: var(--green); stroke-dasharray: 6 10; animation: network-flow 2.4s linear infinite; }
+.network-edge.unresolved { stroke: var(--amber); stroke-dasharray: 5 4; }
 .network-edge.is-highlighted { opacity: 1; stroke-width: 2.1; }
 .network-edge.is-muted { opacity: .18; }
 @keyframes network-flow { to { stroke-dashoffset: -48; } }
