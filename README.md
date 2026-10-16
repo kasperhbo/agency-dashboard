@@ -32,6 +32,7 @@ Open **http://127.0.0.1:4318**. Fonts and assets are bundled locally. No API key
 - Agent session cards and table, provider/status filters, project search, and inspectable event history.
 - Project workspaces group observed sessions and planned tasks, with project search, recent activity, task progress, and project-scoped task creation.
 - Task creation, editing, provider assignment, priorities, status changes, completion, and deletion.
+- Task-board priority filtering and explicit stored/priority/recent ordering. Filtering and sorting do not rewrite tasks; reset restores the default stored order.
 - Session-linked follow-up tasks, with navigation from task to session and linked tasks inside session details. Change or remove a link in the task editor.
 - Activity feed, provider usage breakdown, and project summaries.
 - **Usage & insights** shows input/output, cache-read/cache-write, reported reasoning, dated UTC usage, per-log coverage, model context snapshots, provider quota snapshots, and native CLI cost estimates where available.
@@ -82,6 +83,8 @@ npm run dev
 `AGENCY_PORT` changes the production/API port (default 4318). The Vite development proxy expects port 4318; retain that default when running `npm run dev`.
 
 Local tasks live in `.agency/tasks.json`, which is gitignored. Back up this file to preserve your task board. Writes are serialized and use atomic file replacement. Conflicting edits return an error instead of silently replacing newer changes. Corrupt task storage produces a visible error and is not overwritten.
+
+Settings also offers **Download task JSON** for the active workspace after a successful task read. This versioned download contains task text and session references, not session logs. It records the last successful read and confirmed update, marks failed or aged snapshots stale, and excludes unconfirmed writes. It is a browser snapshot rather than an atomic disk backup; no import or restore workflow is provided. Demo and local exports remain separate.
 
 Demo tasks use `agency.demoTasks` in localStorage, independent of the local board. Settings can restore the demo board. Browser storage failures are reported. Themes and source preferences are stored in this browser.
 

@@ -34,6 +34,7 @@ export function useWorkspace() {
   const [sessionError, setSessionError] = useState('');
   const [taskError, setTaskError] = useState('');
   const [tasksUpdatedAt, setTasksUpdatedAt] = useState('');
+  const [tasksReadAt, setTasksReadAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [storageError, setStorageError] = useState('');
@@ -63,7 +64,8 @@ export function useWorkspace() {
           const result = await request<Task[]>('/api/tasks', { signal: controller.signal });
           // A list read before or during a write cannot replace that write's result.
           if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0) {
-            setLocalTasks(result); setTaskError(''); setTasksUpdatedAt(new Date().toISOString());
+            setLocalTasks(result); setTaskError('');
+            const readAt = new Date().toISOString(); setTasksUpdatedAt(readAt); setTasksReadAt(readAt);
           }
         } catch (error) {
           if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0) setTaskError((error as Error).message);
@@ -135,5 +137,5 @@ export function useWorkspace() {
     }
   }
   function resetDemo() { saveDemo(demoTasks); }
-  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing: mode === 'local' && refreshing, error: mode === 'local' ? [sessionError, taskError].filter(Boolean).join(' ') : '', sessionError: mode === 'local' ? sessionError : '', taskError: mode === 'local' ? taskError : '', tasksUpdatedAt: mode === 'local' ? tasksUpdatedAt : '', storageError, refresh, saveTask, deleteTask, resetDemo };
+  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing: mode === 'local' && refreshing, error: mode === 'local' ? [sessionError, taskError].filter(Boolean).join(' ') : '', sessionError: mode === 'local' ? sessionError : '', taskError: mode === 'local' ? taskError : '', tasksUpdatedAt: mode === 'local' ? tasksUpdatedAt : '', tasksReadAt: mode === 'local' ? tasksReadAt : '', storageError, refresh, saveTask, deleteTask, resetDemo };
 }
