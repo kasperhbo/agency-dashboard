@@ -5,7 +5,7 @@ import { layoutTopology } from '../shared/topology-layout.mjs';
 const node = (id, kind, rest = {}) => ({ id, kind, label: id, ...rest });
 const edge = (source, target, kind = 'membership') => ({ id: `${source}-${target}`, source, target, kind, evidence: kind === 'membership' ? 'provider' : 'log-parent', animated: false });
 const graph = {
-  nodes: [node('workspace', 'workspace'), node('claude', 'provider', { provider: 'claude' }), node('codex', 'provider', { provider: 'codex' }), node('parent', 'session', { provider: 'claude', project: 'website', status: 'idle' }), node('child', 'subagent', { provider: 'claude', project: 'website', status: 'running', label: 'Build tests' }), node('other', 'session', { provider: 'codex', project: 'api', status: 'completed' })],
+  nodes: [node('workspace', 'workspace'), node('claude', 'provider', { provider: 'claude' }), node('codex', 'provider', { provider: 'codex' }), node('parent', 'session', { provider: 'claude', project: 'website', status: 'running' }), node('child', 'subagent', { provider: 'claude', project: 'website', status: 'running', label: 'Build tests' }), node('other', 'session', { provider: 'codex', project: 'api', status: 'completed' })],
   edges: [edge('workspace', 'claude'), edge('workspace', 'codex'), edge('claude', 'parent'), edge('parent', 'child', 'parent-child'), edge('codex', 'other')],
 };
 
