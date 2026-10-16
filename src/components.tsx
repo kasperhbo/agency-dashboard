@@ -51,10 +51,13 @@ export function TaskRow({ task, onToggle, onEdit, busy = false }: { task: Task; 
 }
 export function SessionDetail({ session, tasks, mode, onClose, onCreateTask, onEditTask }: { session: Session; tasks: Task[]; mode: string; onClose: () => void; onCreateTask: () => void; onEditTask: (task: Task) => void }) {
   const linked = tasks.filter(task => task.sessionId === session.id && task.provider === session.provider);
+  const observed = Date.parse(session.lastActivityAt || session.updatedAt);
+  const observedAt = Number.isFinite(observed) ? new Date(observed).toISOString() : null;
+  const timestampSource = session.timestampSource === 'log' ? 'From session log' : session.timestampSource === 'file' ? 'From file modification time' : 'Timestamp source not reported';
   return <Modal title="Session details" className="detail-modal" onClose={onClose}>
     <div className="detail-intro"><ProviderMark provider={session.provider} /><div><span className="muted">{providerLabel(session.provider)}</span><h3>{session.name || shortModel(session.model)}</h3></div><StatusBadge status={session.status} /></div>
     <p className="detail-title">{session.title}</p>
-    <div className="detail-grid"><div><span>Project</span><strong><Folder size={14} />{session.project}</strong></div><div><span>Last observed model</span><strong>{session.model}</strong></div><div><span>Tokens recorded</span><strong>{session.tokens?.toLocaleString() ?? 'Not reported'}</strong></div><div><span>Last activity</span><strong>{timeAgo(session.lastActivityAt || session.updatedAt)}</strong></div></div>
+    <div className="detail-grid"><div><span>Project</span><strong><Folder size={14} />{session.project}</strong></div><div><span>Last observed model</span><strong>{session.model}</strong></div><div><span>Tokens recorded</span><strong>{session.tokens?.toLocaleString() ?? 'Not reported'}</strong></div><div role="group" aria-label="Observed timestamp"><span>Observed timestamp</span>{observedAt ? <><strong><time dateTime={observedAt}>{observedAt.slice(0, 10)} {observedAt.slice(11, 19)} UTC</time></strong><span>{timeAgo(observedAt)} · {timestampSource}</span></> : <strong>Not reported</strong>}</div></div>
     {session.kind === 'subagent' && <p className="info-note">Subagent run. Parent session: {session.parentNativeId || 'Not reported'}. Subagents are counted separately from top-level sessions.</p>}
     <UsageNumbers usage={session.usage} />
     <p className="info-note">{mode === 'demo' ? 'This is a sample session. No agent is running from this dashboard.' : 'Status is inferred from meaningful log activity, not process monitoring. Unfinished work becomes idle after 2 minutes without activity. File modification time does not make an old run active.'}</p>
