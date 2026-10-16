@@ -6,6 +6,7 @@ import { ActivityPage, AgentsPage, SettingsPage, TasksPage } from './Pages';
 import { TaskEditor } from './TaskEditor';
 import { ProjectsPage } from './Projects';
 import { NetworkPage } from './NetworkPage';
+import { AttentionPage } from './Attention';
 import { useWorkspace } from './useWorkspace';
 import { useTheme } from './useTheme';
 import { useObservationClock } from './useObservationClock';
@@ -13,6 +14,7 @@ import { providerLabel, uniqueRuns, type Page, type Session, type Task, type Tas
 
 const navigation: { id: Page; label: string; icon: LucideIcon; description: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, description: 'The big picture, without the noise.' },
+  { id: 'attention', label: 'Attention', icon: Bell, description: 'Session signals and high-priority plans, with their source context.' },
   { id: 'network', label: 'Agent network', icon: Network, description: 'A connected view of your agents and the teams they create.' },
   { id: 'agents', label: 'Agents', icon: Cpu, description: 'Your extra pairs of hands, all in one place.' },
   { id: 'projects', label: 'Projects', icon: FolderKanban, description: 'Every project, with its agents and next steps.' },
@@ -32,7 +34,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspaceMenu, setWorkspaceMenu] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const searchNow = useObservationClock(commandOpen && workspace.mode === 'local');
+  const observationNow = useObservationClock(workspace.mode === 'local');
   const [commandQuery, setCommandQuery] = useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selected, setSelected] = useState<Session | null>(null);
@@ -46,7 +48,10 @@ export default function App() {
   const currentPage = allPages.find(p => p.id === page)!;
   const active = uniqueRuns(workspace.sessions).filter(s => ['running', 'waiting', 'error'].includes(s.status));
   const observed = workspace.mode === 'demo' || Number.isFinite(Date.parse(workspace.scannedAt));
+  const sessionPartial = workspace.sources.some(source => source.limited || source.warnings.length > 0 || source.status !== 'connected');
+  const sessionAttentionKnown = workspace.mode === 'demo' || (observed && !workspace.sessionError && observationNow - Date.parse(workspace.scannedAt) <= 120000 && !sessionPartial);
   const attention = uniqueRuns(workspace.sessions).filter(s => ['waiting', 'error'].includes(s.status)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+  const highPriorityTasks = workspace.tasks.filter(task => task.priority === 'high' && task.status !== 'done');
   const notify = useCallback((message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -120,7 +125,7 @@ export default function App() {
   const searchWarnings = [
     workspace.sessionError ? 'Session refresh failed; retained results may be outdated.' : '',
     workspace.taskError ? 'Task refresh failed; retained results may be outdated.' : '',
-    !Number.isFinite(searchObservation) ? 'No successful session observation is available.' : searchNow - searchObservation > 120000 ? 'The session observation is stale.' : '',
+    !Number.isFinite(searchObservation) ? 'No successful session observation is available.' : observationNow - searchObservation > 120000 ? 'The session observation is stale.' : '',
     workspace.sources.some(source => source.limited || source.warnings.length || source.status !== 'connected') ? 'Session discovery is partial or a source is unavailable.' : '',
   ].filter(Boolean).join(' ');
 
@@ -143,7 +148,8 @@ export default function App() {
         {(workspace.error || workspace.storageError) && <div className="error-banner" role="alert"><InfoSymbol /><span>{workspace.error || workspace.storageError}</span>{workspace.error && <button className="text-button" onClick={() => void workspace.refresh()}>Retry <RefreshCw size={13} /></button>}</div>}
         {workspace.mode === 'local' && workspace.sources.some(s => s.limited || s.warnings.length) && <div className="warning-banner"><InfoSymbol /><span>Some session history is partial or unreadable. Check Settings for connection details.</span><button className="text-button" onClick={() => navigate('settings')}>Details <ArrowRight size={13} /></button></div>}
         {workspace.loading && !workspace.sessions.length ? <div className="loading-state" role="status"><LoaderCircle size={27} className="spin" /><h3>Getting the workspace together…</h3><p>Reading your local agent session metadata.</p></div> : <>
-          {page === 'overview' && <Overview sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} topology={workspace.topology} mode={workspace.mode} observed={observed} attention={attention} onAttention={() => setNotificationsOpen(true)} onOpen={setSelected} navigate={navigate} newTask={() => newTask()} toggleTask={task => void changeTask(task, task.status === 'done' ? 'todo' : 'done')} editTask={task => setEditor({ task })} busyTask={busyTask} connect={connectLocal} />}
+          {page === 'overview' && <Overview sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} topology={workspace.topology} mode={workspace.mode} observed={observed} attentionKnown={sessionAttentionKnown} attention={attention} onAttention={() => setNotificationsOpen(true)} onOpen={setSelected} navigate={navigate} newTask={() => newTask()} toggleTask={task => void changeTask(task, task.status === 'done' ? 'todo' : 'done')} editTask={task => setEditor({ task })} busyTask={busyTask} connect={connectLocal} />}
+          {page === 'attention' && <AttentionPage key={workspace.mode} sessions={attention} tasks={highPriorityTasks} mode={workspace.mode} sessionError={workspace.sessionError} taskError={workspace.taskError} loading={workspace.loading} scannedAt={workspace.scannedAt} tasksReadAt={workspace.tasksReadAt} sessionPartial={sessionPartial} sessionAttentionKnown={sessionAttentionKnown} now={observationNow} onOpen={setSelected} onEdit={task => setEditor({ task })} />}
           {page === 'agents' && <AgentsPage key={workspace.mode} sessionObserved={observed && !workspace.sessionError} sessions={workspace.sessions} mode={workspace.mode} onOpen={setSelected} onOpenSettings={() => navigate('settings')} />}
           {page === 'network' && <NetworkPage mode={workspace.mode} sessions={workspace.sessions} onOpen={setSelected} />}
           {page === 'projects' && <ProjectsPage key={workspace.mode} sessions={workspace.sessions} tasks={workspace.tasks} mode={workspace.mode} onOpen={setSelected} newTask={project => setEditor({ initial: { project } })} editTask={task => setEditor({ task })} toggleTask={task => void changeTask(task, task.status === 'done' ? 'todo' : 'done')} busyTask={busyTask} />}
@@ -157,7 +163,7 @@ export default function App() {
     </div>
     {selected && <SessionDetail session={workspace.sessions.find(s => s.id === selected.id) || selected} tasks={workspace.tasks} mode={workspace.mode} onClose={() => setSelected(null)} onEditTask={task => { setSelected(null); setEditor({ task }); }} onCreateTask={() => { setEditor({ initial: { title: `Follow up: ${selected.title}`.slice(0, 160), project: selected.project, provider: selected.provider, sessionId: selected.id } }); setSelected(null); }} />}
     {editor && <TaskEditor {...editor} onReload={(task, signal) => workspace.reloadTask(task.id, signal)} sessions={workspace.sessions} mode={workspace.mode} onClose={() => setEditor(null)} onSave={async (input, task) => { await workspace.saveTask(input, task); notify(task ? 'Task updated' : 'Task created. Give that idea a home.'); }} onDelete={async task => { await workspace.deleteTask(task); notify('Task deleted'); }} />}
-    {notificationsOpen && <Modal title="A little heads-up" onClose={() => setNotificationsOpen(false)} className="notification-modal"><p className="form-intro">{workspace.mode === 'demo' ? 'Sample attention items from the demo workspace.' : 'Errors detected in the most recent session logs.'}</p>{attention.length ? <div className="notification-list">{attention.map(s => <button key={s.id} onClick={() => { setNotificationsOpen(false); setSelected(s); }}><ProviderMark provider={s.provider} /><span><strong>{s.name || providerLabel(s.provider)}</strong><span>{s.status === 'waiting' ? 'Ready for your review' : 'An error needs a closer look'}</span><small>{s.title}</small></span><ArrowUpRight size={17} /></button>)}</div> : <EmptyState title={observed ? 'You’re all caught up' : 'Session data unavailable'} description={observed ? 'No attention items were found in your sessions.' : 'Session logs have not been observed yet, so attention status is unknown.'} />}<div className="notification-note"><CheckCheck size={16} />Native approvals stay in Claude and Codex.</div></Modal>}
+    {notificationsOpen && <Modal title="A little heads-up" onClose={() => setNotificationsOpen(false)} className="notification-modal"><p className="form-intro">{workspace.mode === 'demo' ? 'Sample attention items from the demo workspace.' : 'Errors detected in the most recent session logs.'}</p>{!sessionAttentionKnown && <p className="info-note" role="status">Session attention is unconfirmed. Showing retained data; observations may be missing, stale, failed, or partial.</p>}{attention.length ? <div className="notification-list">{attention.map(s => <button key={s.id} onClick={() => { setNotificationsOpen(false); setSelected(s); }}><ProviderMark provider={s.provider} /><span><strong>{s.name || providerLabel(s.provider)}</strong><span>{s.status === 'waiting' ? 'Ready for your review' : 'An error needs a closer look'}</span><small>{s.title}</small></span><ArrowUpRight size={17} /></button>)}</div> : <EmptyState title={sessionAttentionKnown ? 'You’re all caught up' : 'Session data unavailable'} description={sessionAttentionKnown ? 'No attention items were found in your sessions.' : 'Current session attention cannot be confirmed from the available observation.'} />}<div className="notification-note"><CheckCheck size={16} />Native approvals stay in Claude and Codex.</div></Modal>}
     {commandOpen && <Modal title="Find your way" className="command-modal" onClose={() => setCommandOpen(false)}><div className="command-search"><Search size={20} /><input data-autofocus autoFocus aria-label="Search workspace" placeholder="Search agents, tasks, or jump to a page…" value={commandQuery} onChange={e => setCommandQuery(e.target.value)} /></div>{workspace.mode === 'local' && <p className="form-intro" role="note" aria-label="Search data scope">Search covers currently loaded sessions and tasks, not complete history or live process state. {searchWarnings}</p>}<div className="command-results">{matchingPages.length > 0 && <div className="command-group"><span>Go to</span>{matchingPages.map(item => <button key={item.id} onClick={() => navigate(item.id)}><item.icon size={17} /><span>{item.label}</span><ArrowDownLeft size={14} /></button>)}</div>}{search && matchingSessions.length > 0 && <div className="command-group"><span role="heading" aria-level={3}>Sessions · Showing {matchingSessions.length} of {sessionMatches.length} matches · {searchScope}</span>{matchingSessions.map(s => <button key={s.id} onClick={() => { setCommandOpen(false); setSelected(s); }}><ProviderMark provider={s.provider} small /><span>{s.title}<small>{s.project}</small></span><ArrowUpRight size={14} /></button>)}</div>}{search && matchingTasks.length > 0 && <div className="command-group"><span role="heading" aria-level={3}>Tasks · Showing {matchingTasks.length} of {taskMatches.length} matches · {searchScope}</span>{matchingTasks.map(task => <button key={task.id} onClick={() => { setCommandOpen(false); setEditor({ task }); }}><ListTodo size={17} /><span>{task.title}</span><ArrowUpRight size={14} /></button>)}</div>}{search && !matchingPages.length && !matchingSessions.length && !matchingTasks.length && <EmptyState title="Nothing found just yet" description="Try an agent name, project, task title or description, or page." />}</div><div className="command-footer"><Command size={13} /><span>Your workspace, a few keystrokes away.</span><kbd>Esc to close</kbd></div></Modal>}
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;

@@ -1,7 +1,7 @@
 export type Provider = 'claude' | 'codex';
 export type SessionStatus = 'running' | 'waiting' | 'completed' | 'idle' | 'error';
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
-export type Page = 'overview' | 'network' | 'agents' | 'projects' | 'tasks' | 'activity' | 'insights' | 'settings';
+export type Page = 'overview' | 'attention' | 'network' | 'agents' | 'projects' | 'tasks' | 'activity' | 'insights' | 'settings';
 export type Mode = 'demo' | 'local';
 export interface AgentEvent { id: string; label: string; timestamp: string; kind: string }
 export interface Session {
