@@ -83,7 +83,7 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
 
 export function ActivityPage({ sessions, onOpen }: { sessions: Session[]; onOpen: (s: Session) => void }) {
   const [query, setQuery] = useState(''), [provider, setProvider] = useState('all');
-  return <><FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search activity…" /><section className="panel activity-page-panel"><SectionHeading title="The story so far" description="Most recent supported events from your agent sessions" /><ActivityFeed sessions={sessions} onOpen={onOpen} full query={query} provider={provider} /></section><p className="page-footnote"><Info size={13} />Up to 100 events displayed. Open a session to see its recent history.</p></>;
+  return <><FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search activity…">{(query || provider !== 'all') && <button className="text-button" onClick={() => { setQuery(''); setProvider('all'); }}>Reset activity filters</button>}</FilterBar><section className="panel activity-page-panel"><SectionHeading title="The story so far" description="Most recent supported events from your agent sessions" /><ActivityFeed sessions={sessions} onOpen={onOpen} full query={query} provider={provider} /></section><p className="page-footnote"><Info size={13} />Up to 100 matching retained events displayed from the current workspace. Open a session to see its retained history.</p></>;
 }
 
 export function SettingsPage({ mode, setMode, sources, scannedAt, tasks, tasksReadAt, tasksUpdatedAt, taskError, refreshing, refresh, theme, setTheme, resetDemo, notify }: {
