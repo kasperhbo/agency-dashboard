@@ -8,10 +8,13 @@ export function readPreference(key: string, fallback: string) {
 export function writePreference(key: string, value: string) {
   try { localStorage.setItem(`agency.${key}`, value); return true; } catch { return false; }
 }
+export class WorkspaceRequestError extends Error {
+  constructor(public status: number, message: string) { super(message); this.name = 'WorkspaceRequestError'; }
+}
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...options, signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...options?.headers } });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Request failed. Try again.');
+  if (!response.ok) throw new WorkspaceRequestError(response.status, data.error || 'Request failed. Try again.');
   return data;
 }
 function initialDemoTasks(): Task[] {
@@ -41,6 +44,7 @@ export function useWorkspace() {
   const scope = useRef(0);
   const refreshController = useRef<AbortController | null>(null);
   const mutations = useRef(new Set<AbortController>());
+  const taskReload = useRef<AbortController | null>(null);
   const taskGeneration = useRef(0);
   const refresh = useCallback(async (silent = false) => {
     if (modeRef.current !== 'local' || refreshController.current) return;
@@ -63,12 +67,12 @@ export function useWorkspace() {
         try {
           const result = await request<Task[]>('/api/tasks', { signal: controller.signal });
           // A list read before or during a write cannot replace that write's result.
-          if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0) {
+          if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0 && !taskReload.current) {
             setLocalTasks(result); setTaskError('');
             const readAt = new Date().toISOString(); setTasksUpdatedAt(readAt); setTasksReadAt(readAt);
           }
         } catch (error) {
-          if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0) setTaskError((error as Error).message);
+          if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0 && !taskReload.current) setTaskError((error as Error).message);
         }
       })(),
     ]);
@@ -90,6 +94,8 @@ export function useWorkspace() {
       scope.current++;
       refreshController.current?.abort();
       refreshController.current = null;
+      taskReload.current?.abort();
+      taskReload.current = null;
       for (const controller of mutations.current) controller.abort();
       mutations.current.clear();
     };
@@ -137,5 +143,24 @@ export function useWorkspace() {
     }
   }
   function resetDemo() { saveDemo(demoTasks); }
-  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing: mode === 'local' && refreshing, error: mode === 'local' ? [sessionError, taskError].filter(Boolean).join(' ') : '', sessionError: mode === 'local' ? sessionError : '', taskError: mode === 'local' ? taskError : '', tasksUpdatedAt: mode === 'local' ? tasksUpdatedAt : '', tasksReadAt: mode === 'local' ? tasksReadAt : '', storageError, refresh, saveTask, deleteTask, resetDemo };
+  async function reloadTask(id: string, signal: AbortSignal): Promise<Task> {
+    if (modeRef.current !== 'local' || taskReload.current || mutations.current.size) throw new Error('Task reload is unavailable. Keep your draft and try again.');
+    const controller = new AbortController(), currentScope = scope.current;
+    taskReload.current = controller;
+    const generation = ++taskGeneration.current;
+    const current = () => !signal.aborted && !controller.signal.aborted && modeRef.current === 'local' && scope.current === currentScope && taskGeneration.current === generation;
+    try {
+      const result = await request<Task[]>('/api/tasks', { signal: AbortSignal.any([signal, controller.signal]) });
+      if (!current() || mutations.current.size) throw new Error('Workspace changed during task reload. Your draft was kept.');
+      setLocalTasks(result); setTaskError('');
+      const readAt = new Date().toISOString(); setTasksReadAt(readAt); setTasksUpdatedAt(readAt);
+      const latest = result.find(task => task.id === id);
+      if (!latest) throw new Error('This task no longer exists in the current workspace. Your draft was kept; close the editor when ready.');
+      return latest;
+    } finally {
+      if (taskReload.current === controller) taskReload.current = null;
+      if (scope.current === currentScope) taskGeneration.current++;
+    }
+  }
+  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing: mode === 'local' && refreshing, error: mode === 'local' ? [sessionError, taskError].filter(Boolean).join(' ') : '', sessionError: mode === 'local' ? sessionError : '', taskError: mode === 'local' ? taskError : '', tasksUpdatedAt: mode === 'local' ? tasksUpdatedAt : '', tasksReadAt: mode === 'local' ? tasksReadAt : '', storageError, refresh, saveTask, deleteTask, reloadTask, resetDemo };
 }
