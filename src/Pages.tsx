@@ -6,6 +6,7 @@ import { taskBackup } from './task-backup';
 import { useObservationClock } from './useObservationClock';
 import { utcTime } from './usage-view';
 import { compareTaskPriority, compareTaskRecent } from './task-view';
+import { readPreference, writePreference } from './useWorkspace';
 import { compact, providerLabel, taskStatusLabel, timeAgo, type Mode, type Provider, type Session, type Source, type Task, type TaskStatus } from './types';
 
 function connectionSummary(source: Source) {
@@ -19,12 +20,34 @@ function FilterBar({ query, setQuery, provider, setProvider, placeholder, childr
 }
 
 export function AgentsPage({ sessions, mode, onOpen }: { sessions: Session[]; mode: Mode; onOpen: (s: Session) => void }) {
-  const [query, setQuery] = useState(''), [provider, setProvider] = useState('all'), [status, setStatus] = useState('all');
-  const [layout, setLayout] = useState<'grid' | 'list'>('grid');
+  const [query, setQuery] = useState('');
+  const [preferences, setPreferences] = useState(() => {
+    let saved: Record<string, unknown> = {};
+    try {
+      const value: unknown = JSON.parse(readPreference(`agents.${mode}`, '{}'));
+      if (value && typeof value === 'object' && !Array.isArray(value)) saved = value as Record<string, unknown>;
+    } catch { /* Invalid saved preferences fall back to usable defaults. */ }
+    return {
+      provider: typeof saved.provider === 'string' && ['all', 'claude', 'codex'].includes(saved.provider) ? saved.provider : 'all',
+      status: typeof saved.status === 'string' && ['all', 'active', 'completed', 'idle'].includes(saved.status) ? saved.status : 'all',
+      layout: typeof saved.layout === 'string' && ['grid', 'list'].includes(saved.layout) ? saved.layout : 'grid',
+    };
+  });
+  const [preferenceError, setPreferenceError] = useState('');
+  const { provider, status, layout } = preferences;
+  function updatePreferences(next: typeof preferences) {
+    setPreferences(next);
+    setPreferenceError(writePreference(`agents.${mode}`, JSON.stringify(next)) ? '' : 'Browser storage is unavailable. Agent filters and view work for this visit but will not be remembered.');
+  }
+  function setProvider(value: string) { updatePreferences({ ...preferences, provider: value }); }
+  function setStatus(value: string) { updatePreferences({ ...preferences, status: value }); }
+  function setLayout(value: string) { updatePreferences({ ...preferences, layout: value }); }
+  function resetFilters() { setQuery(''); updatePreferences({ provider: 'all', status: 'all', layout: 'grid' }); }
   const filtered = sessions.filter(s => (provider === 'all' || s.provider === provider) && (status === 'all' || (status === 'active' ? ['running', 'waiting', 'error'].includes(s.status) : s.status === status)) && `${s.title} ${s.name || ''} ${s.project} ${s.model}`.toLowerCase().includes(query.toLowerCase()));
   return <><FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search agents, sessions, projects…"><div className="view-switch" aria-label="Session layout"><button aria-label="Grid view" aria-pressed={layout === 'grid'} onClick={() => setLayout('grid')}><LayoutGrid size={16} /></button><button aria-label="List view" aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={17} /></button></div></FilterBar><div className="tabs" role="group" aria-label="Session status">{[['all', 'All sessions'], ['active', 'Active'], ['completed', 'Completed'], ['idle', 'Idle']].map(([value, label]) => <button key={value} aria-pressed={status === value} className={status === value ? 'active' : ''} onClick={() => setStatus(value)}>{label}<span>{sessions.filter(s => value === 'all' || (value === 'active' ? ['running', 'waiting', 'error'].includes(s.status) : s.status === value)).length}</span></button>)}</div>
-    {!filtered.length ? <div className="panel"><EmptyState title={sessions.length ? 'No sessions match' : 'Meet your next pair of hands'} description={sessions.length ? 'Try another search or choose a different filter.' : 'Start a Claude Code or Codex session on this computer. It will appear here on the next refresh.'} action={sessions.length ? <button className="button secondary" onClick={() => { setQuery(''); setProvider('all'); setStatus('all'); }}>Reset filters</button> : undefined} /></div> : layout === 'grid' ? <div className="all-agents-grid">{filtered.map(session => <SessionCard key={session.id} session={session} mode={mode} onOpen={() => onOpen(session)} />)}</div> : <section className="panel sessions-table-wrap"><table className="sessions-table"><thead><tr><th>Agent / session</th><th>Project</th><th>Status</th><th>Tokens</th><th>Updated</th></tr></thead><tbody>{filtered.map(s => <tr key={s.id}><td><button className="table-session" onClick={() => onOpen(s)}><ProviderMark provider={s.provider} small /><span><strong>{s.name || providerLabel(s.provider)}</strong><small>{s.title}</small></span></button></td><td>{s.project}</td><td><StatusBadge status={s.status} /></td><td>{compact(s.tokens)}</td><td>{timeAgo(s.updatedAt)}</td></tr>)}</tbody></table></section>}
-    <p className="page-footnote"><Info size={13} />{mode === 'demo' ? 'Sample sessions for exploring Agency. Switch to Local workspace to see your own.' : 'Observing up to 100 recent logs per provider. Status comes from log activity, not process monitoring.'}</p>
+    <div className="page-footnote" role="region" aria-label="Active agent filters"><span>Provider: {provider === 'all' ? 'All providers' : providerLabel(provider as Provider)} · Status: {({ all: 'All sessions', active: 'Active', completed: 'Completed', idle: 'Idle' } as Record<string, string>)[status]} · View: {layout === 'grid' ? 'Grid' : 'List'}{query ? ' · Search active' : ''}<br />{mode === 'demo' ? 'Sample sessions for exploring Agency. Switch to Local workspace to see your own.' : 'Observing up to 100 recent logs per provider. Status comes from log activity, not process monitoring.'}</span><button className="text-button" onClick={resetFilters}>Reset filters</button></div>
+    {preferenceError && <p className="info-note" role="status">{preferenceError}</p>}
+    {!filtered.length ? <div className="panel"><EmptyState title={sessions.length ? 'No sessions match' : 'Meet your next pair of hands'} description={sessions.length ? 'Try another search or choose a different filter.' : 'No sessions are available in this workspace. In Local workspace, check Settings to compare the configured source with your CLI account.'} /></div> : layout === 'grid' ? <div className="all-agents-grid">{filtered.map(session => <SessionCard key={session.id} session={session} mode={mode} onOpen={() => onOpen(session)} />)}</div> : <section className="panel sessions-table-wrap"><table className="sessions-table"><thead><tr><th>Agent / session</th><th>Project</th><th>Status</th><th>Tokens</th><th>Updated</th></tr></thead><tbody>{filtered.map(s => <tr key={s.id}><td><button className="table-session" onClick={() => onOpen(s)}><ProviderMark provider={s.provider} small /><span><strong>{s.name || providerLabel(s.provider)}</strong><small>{s.title}</small></span></button></td><td>{s.project}</td><td><StatusBadge status={s.status} /></td><td>{compact(s.tokens)}</td><td>{timeAgo(s.updatedAt)}</td></tr>)}</tbody></table></section>}
   </>;
 }
 

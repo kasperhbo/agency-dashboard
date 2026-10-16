@@ -61,7 +61,12 @@ export function SessionDetail({ session, tasks, mode, onClose, onCreateTask, onE
     <section className="linked-tasks"><SectionHeading title="Linked tasks" count={linked.length} />{linked.length ? linked.map(task => <button key={task.id} className="linked-task-row" onClick={() => onEditTask(task)}><span>{task.title}<small>{taskStatusLabel[task.status]}</small></span><ArrowUpRight size={15} /></button>) : <p>No follow-up tasks linked yet.</p>}</section>
     {session.partial && <p className="warning-note">Some log content was skipped or the 64 MiB read limit was reached. Usage coverage is partial; values may be a lower bound.</p>}
     <SectionHeading title="Recent session events" />
-    <div className="detail-events">{session.events.length ? session.events.map(event => <div className="detail-event" key={event.id}><span className={`event-icon ${event.kind}`}>{event.kind === 'tool' ? <Code2 size={14} /> : event.kind === 'success' ? <Check size={14} /> : <GitBranch size={14} />}</span><span>{event.label}</span><time>{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="muted">No supported events were found in this session.</p>}</div>
+    <p className="field-help">Up to the last 35 supported events, in reverse source log order; not a complete lifecycle or timestamp-sorted history. Times are shown in UTC. When an event timestamp is missing, the parser may use a preceding log timestamp or file modification time.</p>
+    <div className="detail-events">{session.events.length ? session.events.map(event => {
+      const parsed = typeof event.timestamp === 'string' ? Date.parse(event.timestamp) : NaN;
+      const timestamp = Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+      return <div className="detail-event" key={event.id}><span className={`event-icon ${event.kind}`}>{event.kind === 'tool' ? <Code2 size={14} /> : event.kind === 'success' ? <Check size={14} /> : <GitBranch size={14} />}</span><span>{event.label}</span>{timestamp ? <time dateTime={timestamp}>{timestamp.slice(0, 10)} {timestamp.slice(11, 19)} UTC</time> : <span className="muted">Not reported</span>}</div>;
+    }) : <p className="muted">No supported events were found in this session.</p>}</div>
     <div className="detail-id">Session ID <code>{session.nativeId}</code></div>
     <div className="modal-footer"><button className="button secondary" onClick={onClose}>Close</button><button className="button primary" onClick={onCreateTask}><Plus size={16} />Create follow-up task</button></div>
   </Modal>;
