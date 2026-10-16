@@ -48,10 +48,10 @@ test('session follow-up stays linked through reload and can be revisited or unli
 test('missing session references survive edits and can be explicitly removed', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('agency.demoTasks', JSON.stringify([{ id: 'archived-task', title: 'Archived session follow-up', description: '', project: 'old-project', provider: 'claude', status: 'todo', priority: 'medium', sessionId: 'outside-scan', revision: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }])));
   await page.goto('/#tasks');
-  await expect(page.getByText('Linked session outside current scan')).toBeVisible();
+  await expect(page.locator('.kanban-task').getByText('Unavailable in loaded sessions')).toBeVisible();
   await page.getByRole('button', { name: 'Archived session follow-up', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Linked session optional' })).toHaveValue('outside-scan');
-  await expect(page.getByText(/This session is outside the current scan/)).toBeVisible();
+  await expect(page.getByText(/unavailable in currently loaded sessions.*absence does not prove deletion/i)).toBeVisible();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agency.demoTasks')!)[0].sessionId)).toBe('outside-scan');
   await page.getByRole('button', { name: 'Archived session follow-up', exact: true }).click();
