@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, Trash2 } from 'lucide-react';
 import { Modal, ProviderMark } from './components';
 import type { Mode, Provider, Session, Task, TaskInput } from './types';
@@ -7,14 +7,34 @@ export function TaskEditor({ task, initial, sessions, mode, onClose, onSave, onD
   task?: Task; initial?: Partial<TaskInput>; sessions: Session[]; mode: Mode; onClose: () => void;
   onSave: (input: TaskInput, task?: Task) => Promise<void>; onDelete: (task: Task) => Promise<void>;
 }) {
-  const [values, setValues] = useState<TaskInput>({ title: task?.title ?? initial?.title ?? '', description: task?.description ?? '', project: task?.project ?? initial?.project ?? '', provider: task?.provider ?? initial?.provider ?? 'claude', status: task?.status ?? initial?.status ?? 'todo', priority: task?.priority ?? 'medium', sessionId: task?.sessionId ?? initial?.sessionId ?? null });
+  const [original] = useState<TaskInput>(() => ({ title: task?.title ?? initial?.title ?? '', description: task?.description ?? initial?.description ?? '', project: task?.project ?? initial?.project ?? '', provider: task?.provider ?? initial?.provider ?? 'claude', status: task?.status ?? initial?.status ?? 'todo', priority: task?.priority ?? initial?.priority ?? 'medium', sessionId: task ? task.sessionId ?? null : initial?.sessionId ?? null }));
+  const [values, setValues] = useState<TaskInput>(() => ({ ...original }));
   const matchingSessions = sessions.filter(session => session.provider === values.provider);
   const missingSession = values.sessionId && !matchingSessions.some(session => session.id === values.sessionId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const keepEditingRef = useRef<HTMLButtonElement>(null);
+  const dismissOrigin = useRef<HTMLElement | null>(null);
+  const discardDescription = useId();
+  const dirty = (Object.keys(original) as (keyof TaskInput)[]).some(key => original[key] !== values[key]);
+  useEffect(() => { if (confirmDiscard) keepEditingRef.current?.focus(); }, [confirmDiscard]);
+  function keepEditing() {
+    setConfirmDiscard(false);
+    requestAnimationFrame(() => dismissOrigin.current?.focus());
+  }
+  function dismiss() {
+    if (busy) return;
+    if (confirmDiscard) { keepEditing(); return; }
+    if (!dirty) { onClose(); return; }
+    dismissOrigin.current = document.activeElement as HTMLElement | null;
+    setConfirmDelete(false);
+    setConfirmDiscard(true);
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (busy || confirmDiscard) return;
     if (!values.title.trim()) { setError('Give this task a title.'); return; }
     setBusy(true); setError('');
     try { await onSave({ ...values, title: values.title.trim() }, task); onClose(); }
@@ -28,9 +48,9 @@ export function TaskEditor({ task, initial, sessions, mode, onClose, onSave, onD
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  return <Modal title={task ? 'Edit task' : 'A little direction goes a long way.'} onClose={() => { if (!busy) onClose(); }} className="task-editor">
+  return <Modal title={task ? 'Edit task' : 'A little direction goes a long way.'} onClose={dismiss} className="task-editor">
     <p className="form-intro">{mode === 'demo' ? 'Saved in your demo workspace in this browser.' : 'Saved locally on this computer.'} Assigning a provider organizes your work; it won’t start an agent.</p>
-    <form onSubmit={save}><fieldset disabled={busy}>
+    <form onSubmit={save} onKeyDownCapture={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismiss(); } }}><fieldset disabled={busy || confirmDiscard}>
       <label className="form-label" htmlFor="task-title">Task title</label><input id="task-title" data-autofocus autoFocus required maxLength={160} value={values.title} onChange={e => setValues({ ...values, title: e.target.value })} placeholder="What would you like to get done?" />
       <label className="form-label" htmlFor="task-description">Description <span>optional</span></label><textarea id="task-description" maxLength={3000} rows={3} value={values.description} onChange={e => setValues({ ...values, description: e.target.value })} placeholder="Add context, a checklist, or a definition of done…" />
       <span className="form-label" id="provider-label">Assign to</span><div className="provider-picker" role="group" aria-labelledby="provider-label">{(['claude', 'codex'] as Provider[]).map(provider => <button key={provider} type="button" aria-pressed={values.provider === provider} className={values.provider === provider ? 'selected' : ''} onClick={() => setValues({ ...values, provider, sessionId: values.provider === provider ? values.sessionId : null })}><ProviderMark provider={provider} small />{provider === 'claude' ? 'Claude' : 'Codex'}<span className="radio-dot" /></button>)}</div>
@@ -40,7 +60,8 @@ export function TaskEditor({ task, initial, sessions, mode, onClose, onSave, onD
     </fieldset>
     {error && <p className="form-error" role="alert">{error}</p>}
     {confirmDelete && <div className="delete-confirm"><p>Delete “{task?.title}”? This removes it from this workspace.</p><button type="button" className="button secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep task</button><button type="button" className="button danger" disabled={busy} onClick={() => void remove()}>Delete task</button></div>}
-    <div className="modal-footer">{task && <button type="button" className="icon-button delete-button" aria-label="Delete task" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={17} /></button>}<button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button primary" disabled={busy}>{busy && <LoaderCircle size={15} className="spin" />}{task ? 'Save changes' : 'Create task'}</button></div>
+    {confirmDiscard && <div className="delete-confirm" role="group" aria-label="Unsaved changes" aria-describedby={discardDescription}><p id={discardDescription}>Discard unsaved changes? Your draft will be lost.</p><button ref={keepEditingRef} type="button" className="button secondary" onClick={keepEditing}>Keep editing</button><button type="button" className="button danger" onClick={onClose}>Discard changes</button></div>}
+    <div className="modal-footer">{task && <button type="button" className="icon-button delete-button" aria-label="Delete task" disabled={busy || confirmDiscard} onClick={() => setConfirmDelete(true)}><Trash2 size={17} /></button>}<button type="button" className="button secondary" disabled={busy || confirmDiscard} onClick={dismiss}>Cancel</button><button type="submit" className="button primary" disabled={busy || confirmDiscard}>{busy && <LoaderCircle size={15} className="spin" />}{task ? 'Save changes' : 'Create task'}</button></div>
     </form>
   </Modal>;
 }
