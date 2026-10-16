@@ -33,7 +33,7 @@ test('network reads the real topology API and exposes recorded parent-child conn
   await expect(page.locator('.network-viewport')).toHaveClass(/motion-paused/);
   await page.getByRole('button', { name: 'Resume graph animation' }).click();
   await expect(page.locator('.network-viewport')).not.toHaveClass(/motion-paused/);
-  await page.getByRole('button', { name: 'Reset graph view' }).click();
+  await page.getByRole('button', { name: 'Reset network view' }).click();
   await page.locator('h1').click();
   await page.screenshot({ path: 'test-results/agency-network.png', fullPage: true });
 });
@@ -65,6 +65,7 @@ test('network honors reduced motion and keeps its canvas inside mobile layout', 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#network');
+  await page.getByRole('button', { name: 'Graph view', exact: true }).click();
   await expect(page.getByText('Reduced motion enabled')).toBeVisible();
   await expect(page.locator('.network-viewport')).toHaveClass(/motion-paused/);
   await expect(page.getByRole('button', { name: 'Resume graph animation' })).toBeDisabled();

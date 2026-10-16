@@ -63,3 +63,21 @@ test('existing task files without session references remain readable', async () 
     assert.deepEqual(await new TaskStore(file).list(), [legacy]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('provider changes clear inherited session links but preserve explicit replacement and unlinking', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'agency-provider-task-'));
+  try {
+    const file = path.join(root, 'tasks.json');
+    const store = new TaskStore(file);
+    const input = { title: 'Follow up', provider: 'claude', status: 'todo', priority: 'medium' };
+    const task = await store.create({ ...input, sessionId: 'claude-session' });
+    const moved = await store.update(task.id, { ...input, provider: 'codex' }, task.revision);
+    assert.equal(moved.sessionId, null);
+    assert.equal((await new TaskStore(file).list())[0].sessionId, null);
+    await assert.rejects(store.update(task.id, input, task.revision), /changed/);
+    const relinked = await store.update(task.id, { ...input, sessionId: 'historical-claude-session' }, moved.revision);
+    assert.equal(relinked.sessionId, 'historical-claude-session');
+    const explicitUnlink = await store.update(task.id, { ...input, provider: 'codex', sessionId: null }, relinked.revision);
+    assert.equal(explicitUnlink.sessionId, null);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

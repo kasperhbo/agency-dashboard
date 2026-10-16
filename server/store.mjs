@@ -60,6 +60,7 @@ export class TaskStore {
       const index = tasks.findIndex(t => t.id === id);
       if (index === -1) throw new HttpError(404, 'Task was not found.');
       if (revision !== tasks[index].revision) throw new HttpError(409, 'Task changed in another window. Refresh and try again.');
+      if (values.provider !== tasks[index].provider && !Object.hasOwn(values, 'sessionId')) values.sessionId = null;
       tasks[index] = { ...tasks[index], ...values, revision: revision + 1, updatedAt: new Date().toISOString() };
       return tasks[index];
     });

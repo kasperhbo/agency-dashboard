@@ -57,10 +57,11 @@ export function createApp({ store = new TaskStore(path.join(projectRoot, '.agenc
         if (req.method === 'GET' && url.pathname === '/api/health') return json(200, { ok: true, version: '1.0.0' });
         if (['POST', 'PATCH', 'DELETE'].includes(req.method)) {
           if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) throw new HttpError(415, 'Send application/json.');
-          let raw = '', size = 0;
-          for await (const chunk of req) { size += chunk.length; if (size > 16000) throw new HttpError(413, 'Request is too large.'); raw += chunk; }
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) { size += chunk.length; if (size > 16000) throw new HttpError(413, 'Request is too large.'); chunks.push(chunk); }
           let body;
-          try { body = JSON.parse(raw); } catch { throw new HttpError(400, 'Invalid JSON.'); }
+          try { body = JSON.parse(Buffer.concat(chunks, size).toString('utf8')); } catch { throw new HttpError(400, 'Invalid JSON.'); }
           if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'A JSON object is required.');
           if (req.method === 'POST' && url.pathname === '/api/tasks') return json(201, await store.create(body));
           const match = url.pathname.match(/^\/api\/tasks\/([a-zA-Z0-9-]{1,80})$/);
@@ -71,7 +72,9 @@ export function createApp({ store = new TaskStore(path.join(projectRoot, '.agenc
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Method not allowed.');
       const dist = path.join(projectRoot, 'dist');
-      const requested = path.resolve(dist, '.' + decodeURIComponent(url.pathname));
+      let pathname;
+      try { pathname = decodeURIComponent(url.pathname); } catch { throw new HttpError(400, 'Invalid URL encoding.'); }
+      const requested = path.resolve(dist, '.' + pathname);
       if (requested !== dist && !requested.startsWith(dist + path.sep)) throw new HttpError(403, 'Invalid path.');
       let target = requested;
       try { if (!(await stat(target)).isFile()) target = path.join(dist, 'index.html'); }

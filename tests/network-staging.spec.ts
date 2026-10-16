@@ -65,6 +65,7 @@ test('staging stays functional on mobile and respects reduced motion', async ({ 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(staging + '/#network');
   await expect(page.getByText('Staging fixture network', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Graph view', exact: true }).click();
   await expect(page.locator('.network-viewport')).toHaveClass(/motion-paused/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Hierarchy list view' }).click();

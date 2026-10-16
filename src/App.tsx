@@ -6,7 +6,9 @@ import { ActivityPage, AgentsPage, SettingsPage, TasksPage } from './Pages';
 import { TaskEditor } from './TaskEditor';
 import { ProjectsPage } from './Projects';
 import { NetworkPage } from './NetworkPage';
-import { readPreference, useWorkspace, writePreference } from './useWorkspace';
+import { useWorkspace } from './useWorkspace';
+import { useTheme } from './useTheme';
+import { useObservationClock } from './useObservationClock';
 import { providerLabel, uniqueRuns, type Page, type Session, type Task, type TaskInput, type TaskStatus } from './types';
 
 const navigation: { id: Page; label: string; icon: LucideIcon; description: string }[] = [
@@ -27,7 +29,6 @@ function pageFromHash(): Page {
 export default function App() {
   const workspace = useWorkspace();
   const [page, setPage] = useState<Page>(pageFromHash);
-  const [theme, setThemeState] = useState(() => readPreference('theme', 'dark') === 'light' ? 'light' : 'dark');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspaceMenu, setWorkspaceMenu] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -43,12 +44,14 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
   const currentPage = allPages.find(p => p.id === page)!;
   const active = uniqueRuns(workspace.sessions).filter(s => ['running', 'waiting', 'error'].includes(s.status));
-  const attention = uniqueRuns(workspace.sessions).filter(s => ['waiting', 'error'].includes(s.status));
+  const observed = workspace.mode === 'demo' || Number.isFinite(Date.parse(workspace.scannedAt));
+  const attention = uniqueRuns(workspace.sessions).filter(s => ['waiting', 'error'].includes(s.status)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
   const notify = useCallback((message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 5500);
   }, []);
+  const { appearance, theme, setTheme } = useTheme(notify);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const navigate = useCallback((target: Page) => {
     setPage(target); window.location.hash = target;
@@ -61,10 +64,6 @@ export default function App() {
     window.addEventListener('hashchange', change);
     return () => window.removeEventListener('hashchange', change);
   }, []);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#101115' : '#f5f5f8');
-  }, [theme]);
   useEffect(() => {
     if (!sidebarOpen) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -100,10 +99,6 @@ export default function App() {
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
   }, [editor, selected, notificationsOpen, commandOpen]);
-  function setTheme(value: string) {
-    setThemeState(value);
-    if (!writePreference('theme', value)) notify('Appearance changed for this visit. Browser storage is unavailable.');
-  }
   function newTask(status: TaskStatus = 'todo') { setEditor({ initial: { status } }); }
   async function changeTask(task: Task, status: TaskStatus) {
     if (busyTask) return;
@@ -133,27 +128,49 @@ export default function App() {
     </aside>
     <div className="app-body" inert={sidebarOpen || undefined}><header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="Open navigation" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><span className="breadcrumb-home"><LayoutDashboard size={15} />Workspace</span><ChevronRight size={13} /><strong>{currentPage.label}</strong></div><div className="topbar-actions"><span className={`connection-indicator ${workspace.mode}`}><i />{workspace.mode === 'demo' ? 'Demo workspace' : workspace.error ? 'Connection issue' : workspace.loading ? 'Discovering…' : 'Local workspace'}</span><span className="topbar-divider" /><button className="icon-button" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button><button className="icon-button notification-button" aria-label={`Notifications${attention.length ? `, ${attention.length} need attention` : ''}`} onClick={() => setNotificationsOpen(true)}><Bell size={18} />{attention.length > 0 && <i />}</button><button className="topbar-avatar" aria-label="Workspace settings" onClick={() => navigate('settings')}>ME</button></div></header>
       <main className="page-content" id="main-content" ref={mainRef} tabIndex={-1}><div className="page-heading"><div><div className="page-kicker"><span className="purple-dot" />{new Date().toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric' })}</div><h1>{page === 'overview' ? 'Your agents, in sync' : currentPage.label}<span className="heading-dot">.</span></h1><p>{currentPage.description}</p></div><div className="heading-actions">{workspace.mode === 'local' && <button className="icon-button refresh-button" disabled={workspace.refreshing} aria-label="Refresh workspace" onClick={() => void workspace.refresh()}><RefreshCw size={17} className={workspace.refreshing ? 'spin' : ''} /></button>}<button className="button primary new-task-button" aria-label="New task" onClick={() => newTask()}><Plus size={17} />New task<kbd aria-hidden="true">N</kbd></button></div></div>
+        <WorkspaceFreshness workspace={workspace} />
         {(workspace.error || workspace.storageError) && <div className="error-banner" role="alert"><InfoSymbol /><span>{workspace.error || workspace.storageError}</span>{workspace.error && <button className="text-button" onClick={() => void workspace.refresh()}>Retry <RefreshCw size={13} /></button>}</div>}
         {workspace.mode === 'local' && workspace.sources.some(s => s.limited || s.warnings.length) && <div className="warning-banner"><InfoSymbol /><span>Some session history is partial or unreadable. Check Settings for connection details.</span><button className="text-button" onClick={() => navigate('settings')}>Details <ArrowRight size={13} /></button></div>}
         {workspace.loading && !workspace.sessions.length ? <div className="loading-state" role="status"><LoaderCircle size={27} className="spin" /><h3>Getting the workspace together…</h3><p>Reading your local agent session metadata.</p></div> : <>
-          {page === 'overview' && <Overview sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} topology={workspace.topology} mode={workspace.mode} onOpen={setSelected} navigate={navigate} newTask={() => newTask()} toggleTask={task => void changeTask(task, task.status === 'done' ? 'todo' : 'done')} editTask={task => setEditor({ task })} busyTask={busyTask} connect={connectLocal} />}
+          {page === 'overview' && <Overview sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} topology={workspace.topology} mode={workspace.mode} observed={observed} attention={attention} onAttention={() => setNotificationsOpen(true)} onOpen={setSelected} navigate={navigate} newTask={() => newTask()} toggleTask={task => void changeTask(task, task.status === 'done' ? 'todo' : 'done')} editTask={task => setEditor({ task })} busyTask={busyTask} connect={connectLocal} />}
           {page === 'agents' && <AgentsPage sessions={workspace.sessions} mode={workspace.mode} onOpen={setSelected} />}
           {page === 'network' && <NetworkPage mode={workspace.mode} sessions={workspace.sessions} onOpen={setSelected} />}
           {page === 'projects' && <ProjectsPage key={workspace.mode} sessions={workspace.sessions} tasks={workspace.tasks} mode={workspace.mode} onOpen={setSelected} newTask={project => setEditor({ initial: { project } })} editTask={task => setEditor({ task })} toggleTask={task => void changeTask(task, task.status === 'done' ? 'todo' : 'done')} busyTask={busyTask} />}
           {page === 'tasks' && <TasksPage tasks={workspace.tasks} sessions={workspace.sessions} onOpen={setSelected} newTask={newTask} editTask={task => setEditor({ task })} moveTask={(task, status) => void changeTask(task, status)} busyTask={busyTask} />}
           {page === 'activity' && <ActivityPage sessions={workspace.sessions} onOpen={setSelected} />}
-          {page === 'insights' && <Insights sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} mode={workspace.mode} onOpen={setSelected} />}
-          {page === 'settings' && <SettingsPage mode={workspace.mode} setMode={workspace.setMode} sources={workspace.sources} refreshing={workspace.refreshing} refresh={() => void workspace.refresh()} theme={theme} setTheme={setTheme} resetDemo={workspace.resetDemo} notify={notify} />}
+          {page === 'insights' && <Insights sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} mode={workspace.mode} observedAt={workspace.scannedAt} onOpen={setSelected} />}
+          {page === 'settings' && <SettingsPage mode={workspace.mode} setMode={workspace.setMode} sources={workspace.sources} refreshing={workspace.refreshing} refresh={() => void workspace.refresh()} theme={appearance} setTheme={setTheme} resetDemo={workspace.resetDemo} notify={notify} />}
         </>}
         <footer className="page-footer"><span><AgencyMark small />A little more clarity. A little less tab-switching.</span><span>Agency v1.0<span className="footer-dot">·</span>{workspace.mode === 'demo' ? 'Sample data' : workspace.scannedAt ? `Scanned ${new Date(workspace.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Local only'}</span></footer>
       </main>
     </div>
     {selected && <SessionDetail session={workspace.sessions.find(s => s.id === selected.id) || selected} tasks={workspace.tasks} mode={workspace.mode} onClose={() => setSelected(null)} onEditTask={task => { setSelected(null); setEditor({ task }); }} onCreateTask={() => { setEditor({ initial: { title: `Follow up: ${selected.title}`.slice(0, 160), project: selected.project, provider: selected.provider, sessionId: selected.id } }); setSelected(null); }} />}
     {editor && <TaskEditor {...editor} sessions={workspace.sessions} mode={workspace.mode} onClose={() => setEditor(null)} onSave={async (input, task) => { await workspace.saveTask(input, task); notify(task ? 'Task updated' : 'Task created. Give that idea a home.'); }} onDelete={async task => { await workspace.deleteTask(task); notify('Task deleted'); }} />}
-    {notificationsOpen && <Modal title="A little heads-up" onClose={() => setNotificationsOpen(false)} className="notification-modal"><p className="form-intro">{workspace.mode === 'demo' ? 'Sample attention items from the demo workspace.' : 'Errors detected in the most recent session logs.'}</p>{attention.length ? <div className="notification-list">{attention.map(s => <button key={s.id} onClick={() => { setNotificationsOpen(false); setSelected(s); }}><ProviderMark provider={s.provider} /><span><strong>{s.name || providerLabel(s.provider)}</strong><span>{s.status === 'waiting' ? 'Ready for your review' : 'An error needs a closer look'}</span><small>{s.title}</small></span><ArrowUpRight size={17} /></button>)}</div> : <EmptyState title="You’re all caught up" description="No attention items were found in your sessions." />}<div className="notification-note"><CheckCheck size={16} />Native approvals stay in Claude and Codex.</div></Modal>}
+    {notificationsOpen && <Modal title="A little heads-up" onClose={() => setNotificationsOpen(false)} className="notification-modal"><p className="form-intro">{workspace.mode === 'demo' ? 'Sample attention items from the demo workspace.' : 'Errors detected in the most recent session logs.'}</p>{attention.length ? <div className="notification-list">{attention.map(s => <button key={s.id} onClick={() => { setNotificationsOpen(false); setSelected(s); }}><ProviderMark provider={s.provider} /><span><strong>{s.name || providerLabel(s.provider)}</strong><span>{s.status === 'waiting' ? 'Ready for your review' : 'An error needs a closer look'}</span><small>{s.title}</small></span><ArrowUpRight size={17} /></button>)}</div> : <EmptyState title={observed ? 'You’re all caught up' : 'Session data unavailable'} description={observed ? 'No attention items were found in your sessions.' : 'Session logs have not been observed yet, so attention status is unknown.'} />}<div className="notification-note"><CheckCheck size={16} />Native approvals stay in Claude and Codex.</div></Modal>}
     {commandOpen && <Modal title="Find your way" className="command-modal" onClose={() => setCommandOpen(false)}><div className="command-search"><Search size={20} /><input data-autofocus autoFocus aria-label="Search workspace" placeholder="Search agents, tasks, or jump to a page…" value={commandQuery} onChange={e => setCommandQuery(e.target.value)} /></div><div className="command-results">{matchingPages.length > 0 && <div className="command-group"><span>Go to</span>{matchingPages.map(item => <button key={item.id} onClick={() => navigate(item.id)}><item.icon size={17} /><span>{item.label}</span><ArrowDownLeft size={14} /></button>)}</div>}{search && matchingSessions.length > 0 && <div className="command-group"><span>Sessions</span>{matchingSessions.map(s => <button key={s.id} onClick={() => { setCommandOpen(false); setSelected(s); }}><ProviderMark provider={s.provider} small /><span>{s.title}<small>{s.project}</small></span><ArrowUpRight size={14} /></button>)}</div>}{search && matchingTasks.length > 0 && <div className="command-group"><span>Tasks</span>{matchingTasks.map(task => <button key={task.id} onClick={() => { setCommandOpen(false); setEditor({ task }); }}><ListTodo size={17} /><span>{task.title}</span><ArrowUpRight size={14} /></button>)}</div>}{search && !matchingPages.length && !matchingSessions.length && !matchingTasks.length && <EmptyState title="Nothing found just yet" description="Try an agent name, project, task title, or page." />}</div><div className="command-footer"><Command size={13} /><span>Your workspace, a few keystrokes away.</span><kbd>Esc to close</kbd></div></Modal>}
     {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={14} /></span><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;
 }
 
 function InfoSymbol() { return <span className="info-symbol" aria-hidden="true">!</span>; }
+
+function WorkspaceFreshness({ workspace }: { workspace: ReturnType<typeof useWorkspace> }) {
+  const now = useObservationClock(workspace.mode === 'local');
+  if (workspace.mode !== 'local') return null;
+  const observed = Date.parse(workspace.scannedAt);
+  const hasObservation = Number.isFinite(observed);
+  const age = hasObservation ? Math.max(0, now - observed) : 0;
+  const partial = workspace.sources.some(source => source.limited || source.warnings.length || source.status !== 'connected');
+  const state = !hasObservation ? 'unavailable' : age > 120000 ? 'stale' : workspace.sessionError ? 'error' : partial ? 'partial' : 'current';
+  const label = { unavailable: workspace.sessionError ? 'Session data unavailable' : 'Reading session logs…', stale: 'Stale observation', error: 'Session update failed', partial: 'Partial observation', current: 'Observed' }[state];
+  function ago(timestamp: number) {
+    const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+    return seconds < 60 ? `${seconds}s ago` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`;
+  }
+  return <section className="workspace-freshness" aria-label="Workspace data freshness" data-state={state} data-tasks-state={workspace.taskError ? 'error' : workspace.tasksUpdatedAt ? 'current' : 'unavailable'}>
+    <span className="freshness-observation"><i aria-hidden="true" /><strong>{label}</strong>{hasObservation && <time dateTime={workspace.scannedAt} title={new Date(observed).toLocaleString()}> · {ago(observed)}</time>}</span>
+    <span>Checks every 10s while visible</span>
+    <span className={workspace.taskError ? 'freshness-task-error' : ''}>{workspace.taskError ? 'Task update failed' : workspace.tasksUpdatedAt ? `Tasks updated ${ago(Date.parse(workspace.tasksUpdatedAt))}` : 'Tasks not yet available'}</span>
+    {hasObservation && workspace.sessionError && <span>Showing the last session observation</span>}
+  </section>;
+}
