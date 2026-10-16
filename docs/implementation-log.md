@@ -15,10 +15,10 @@ User authorization: implement the agreed dashboard backlog in small batches, mai
 | Batch | Scope | Status | Evidence / PR |
 | --- | --- | --- | --- |
 | 0 | Preserve and publish existing dashboard resilience, accessible inspection, CSV export, and task-link integrity work | Reviewed; additional incomplete-demo-metadata crash fixed | [PR #1](https://github.com/kasperhbo/agency-dashboard/pull/1); build, 76 backend, 64 browser, 3 staging; scoped coverage 98.07%; additional 3 resilience checks passed |
-| 1 | Guided connection diagnostics in existing Settings | Implemented and independently reviewed; 4 focused browser checks passed | Extends Settings with observed snapshot age and manual root guidance; hides retained local paths in demo; no native activity claim |
-| 2 | Per-run usage coverage filtering | Assigned to Frontend Developer; waiting baseline snapshot | Keep workspace totals, daily chart, and CSV scope unchanged |
-| 3 | Task priority filtering and deterministic ordering | Queued | Reuse existing task fields; no writes from sorting |
-| 4 | Local task JSON backup download | Queued | Active source only; load/stale context; no restore claim |
+| 1 | Guided connection diagnostics in existing Settings | Reviewed; build + 4 focused browser checks passed | [PR #2](https://github.com/kasperhbo/agency-dashboard/pull/2), stacked on PR #1; no native activity claim |
+| 2 | Per-run usage coverage filtering | Implemented and independently reviewed; build + 3 focused browser checks passed | Table-only scope; workspace totals, daily chart, and CSV unchanged |
+| 3 | Task priority filtering and deterministic ordering | Feature Dev implementing | Reuse existing task fields; default stored order; no writes from sorting |
+| 4 | Local task JSON backup download | Frontend Developer implementing | Active source only; load/stale context; no restore claim |
 | 5 | Retained-event inspection | Needs demonstrated gap | Existing detail may already satisfy need |
 | 6 | Workspace-scoped Agents filter/view preferences | Queued after visibility work | Explicit reset and safe storage fallback |
 
