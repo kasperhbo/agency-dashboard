@@ -36,6 +36,7 @@ Open **http://127.0.0.1:4318**. Fonts and assets are bundled locally. No API key
 - Activity feed, provider usage breakdown, and project summaries.
 - **Usage & insights** shows input/output, cache-read/cache-write, reported reasoning, dated UTC usage, per-log coverage, model context snapshots, provider quota snapshots, and native CLI cost estimates where available.
 - **Export CSV** downloads the selected usage providers and period locally, with deduplicated summaries, dated records, source timestamps, and coverage caveats. Unknown values remain distinct from zero; undated usage is identified separately. Summary and daily rows must not be added together. Session paths, prompts, credentials, and billing estimates are excluded.
+- **Run coverage** filters the usage table to complete, partial, or unavailable logs without changing workspace totals, the daily chart, or CSV scope. Dated periods continue to exclude runs without dated usage; missing usage is unavailable rather than zero.
 - Global search with **Ctrl/Cmd K**, **N** for a new task, and **Esc** to close dialogs.
 - Dark/light/system appearance with live system updates, mobile navigation, focus-contained dialogs, and reduced-motion support.
 - A recovery screen offers a reload after an unexpected rendering error, preserving saved tasks and preferences.
