@@ -9,6 +9,9 @@ test('projects group sessions and tasks, support search, and prefill project tas
   await page.getByRole('button', { name: 'Open project agency-dashboard', exact: true }).click();
   await expect(page.locator('.project-page-heading h2')).toHaveText('agency-dashboard');
   await expect(page.locator('.project-session-grid .session-card')).not.toHaveCount(0);
+  await expect(page.locator('#project-sessions-panel')).toBeVisible();
+  await expect(page.locator('#project-tasks-panel')).toBeHidden();
+  await page.getByRole('tab', { name: /^Tasks/ }).click();
   await expect(page.locator('.project-task-panel .task-row')).toHaveCount(2);
   await page.screenshot({ path: 'test-results/agency-project-detail.png', fullPage: true });
   await page.getByRole('button', { name: 'Add project task', exact: true }).click();

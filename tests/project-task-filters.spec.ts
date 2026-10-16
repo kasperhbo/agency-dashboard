@@ -21,6 +21,7 @@ async function fixture(page: Page) {
   });
   await page.goto('/#projects');
   await page.getByRole('button', { name: 'Open project Alpha', exact: true }).click();
+  await page.getByRole('tab', { name: /^Tasks/ }).click();
   return { original, writes: () => writes, tasks: () => tasks };
 }
 
@@ -62,15 +63,18 @@ test('project navigation resets filters and pagination; unmatched filters offer 
   await panel.getByRole('combobox', { name: 'Project task status' }).selectOption('open');
   await page.getByRole('button', { name: 'All projects', exact: true }).click();
   await page.getByRole('button', { name: 'Open project Beta', exact: true }).click();
+  await page.getByRole('tab', { name: /^Tasks/ }).click();
   await expect(panel.getByRole('combobox', { name: 'Project task status' })).toHaveValue('all');
   await expect(panel.getByRole('combobox', { name: 'Project task priority' })).toHaveValue('all');
   await expect(panel.locator('.task-row')).toHaveCount(5);
   await expect(panel).not.toContainText('Alpha task');
   await page.getByRole('button', { name: 'All projects', exact: true }).click();
   await page.getByRole('button', { name: 'Open project Alpha', exact: true }).click();
+  await page.getByRole('tab', { name: /^Tasks/ }).click();
   await expect(panel.locator('.task-row')).toHaveCount(20);
   await page.getByRole('button', { name: 'All projects', exact: true }).click();
   await page.getByRole('button', { name: 'Open project Empty', exact: true }).click();
+  await page.getByRole('tab', { name: /^Tasks/ }).click();
   await expect(panel.getByRole('heading', { name: 'Give this project a next step', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Reset filters', exact: true })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Add project task', exact: true }).click();
