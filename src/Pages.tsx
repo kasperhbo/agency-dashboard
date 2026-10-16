@@ -56,6 +56,8 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
   const [priority, setPriority] = useState('all'), [sort, setSort] = useState('stored');
   const [sessionLink, setSessionLink] = useState<'all' | 'available' | 'outside' | 'unlinked'>('all');
   const [layout, setLayout] = useState<'board' | 'list'>('board');
+  const [draggedTaskId, setDraggedTaskId] = useState('');
+  const [dropTarget, setDropTarget] = useState<TaskStatus | ''>('');
   function linkedSession(task: Task) { return task.sessionId ? sessions.find(session => session.id === task.sessionId && session.provider === task.provider) : undefined; }
   function sessionLinkState(task: Task) { return !task.sessionId ? 'unlinked' : linkedSession(task) ? 'available' : 'outside'; }
   const filtered = tasks.filter(t => (provider === 'all' || t.provider === provider) && (priority === 'all' || t.priority === priority) && (sessionLink === 'all' || sessionLinkState(t) === sessionLink) && `${t.title} ${t.project} ${t.description}`.toLowerCase().includes(query.toLowerCase()));
@@ -72,11 +74,24 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
       <span className="filter-count">{filtered.length} task{filtered.length !== 1 ? 's' : ''}</span>
     </FilterBar>
     <p className="field-help" role="note">Available means an exact session ID and provider match in currently loaded data. Unavailable does not prove deletion; the session may be outside this loaded data.</p>
-    {layout === 'board' ? <div className="kanban-board">{(['todo', 'in_progress', 'done'] as TaskStatus[]).map(status => <section className={`kanban-column ${status}`} key={status}>
+    {layout === 'board' ? <><p className="field-help board-drag-help">Drag a task card to another column to change its status. You can also use each card’s status menu.</p><div className="kanban-board">{(['todo', 'in_progress', 'done'] as TaskStatus[]).map(status => <section className={`kanban-column ${status}${dropTarget === status ? ' drop-target' : ''}`} key={status}
+      onDragOver={event => { if (!draggedTaskId || busyTask) return; event.preventDefault(); setDropTarget(status); }}
+      onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(current => current === status ? '' : current); }}
+      onDrop={event => {
+        event.preventDefault();
+        const taskId = event.dataTransfer.getData('text/plain') || draggedTaskId;
+        const task = tasks.find(item => item.id === taskId);
+        setDraggedTaskId(''); setDropTarget('');
+        if (busyTask || !task || task.status === status) return;
+        moveTask(task, status);
+      }}>
       <header><span><i />{taskStatusLabel[status]}<b>{filtered.filter(t => t.status === status).length}</b></span><button className="icon-button" aria-label={`Add ${taskStatusLabel[status].toLowerCase()} task`} onClick={() => newTask(status)}><Plus size={17} /></button></header>
       <div className="kanban-tasks">{filtered.filter(t => t.status === status).map(task => {
         const linked = linkedSession(task);
-        return <article className="kanban-task" key={task.id}>
+        return <article className={`kanban-task${draggedTaskId === task.id ? ' dragging' : ''}`} key={task.id} draggable={!busyTask} onDragStart={event => {
+          if (busyTask) { event.preventDefault(); return; }
+          setDraggedTaskId(task.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.id);
+        }} onDragEnd={() => { setDraggedTaskId(''); setDropTarget(''); }}>
           <div className="kanban-top"><span className={`priority ${task.priority}`}><i />{task.priority}</span><button className="text-button" aria-label={`Edit ${task.title}`} onClick={() => editTask(task)}><ArrowUpRight size={16} /></button></div>
           <button className="kanban-title" onClick={() => editTask(task)}>{task.title}</button>{task.description && <p>{task.description}</p>}
           <span className="session-project"><Folder size={13} />{task.project || 'No project'}</span>
@@ -84,7 +99,7 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
           <div className="kanban-footer"><span><ProviderMark provider={task.provider} small />{providerLabel(task.provider)}</span><label className="status-select"><span className="sr-only">Status of {task.title}</span><select value={task.status} disabled={busyTask === task.id} onChange={e => moveTask(task, e.target.value as TaskStatus)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select>{busyTask === task.id ? <LoaderCircle size={12} className="spin" /> : <ChevronDown size={12} />}</label></div>
         </article>;
       })}{!filtered.some(t => t.status === status) && <div className="column-empty"><Check size={19} /><span>{hasFilters ? 'No matching tasks' : status === 'done' ? 'Good things take small steps.' : 'Room for your next idea.'}</span></div>}<button className="kanban-add" onClick={() => newTask(status)}><Plus size={15} />Add task</button></div>
-    </section>)}</div> : <section className="panel sessions-table-wrap task-list-wrap" aria-label="Tasks list"><table className="sessions-table"><thead><tr><th>Task</th><th>Project</th><th>Provider</th><th>Priority</th><th>Status</th><th>Session</th></tr></thead><tbody>{filtered.map(task => {
+    </section>)}</div></> : <section className="panel sessions-table-wrap task-list-wrap" aria-label="Tasks list"><table className="sessions-table"><thead><tr><th>Task</th><th>Project</th><th>Provider</th><th>Priority</th><th>Status</th><th>Session</th></tr></thead><tbody>{filtered.map(task => {
       const linked = linkedSession(task);
       return <tr key={task.id}><td><button className="table-session" onClick={() => editTask(task)}><span><strong>{task.title}</strong>{task.description && <small>{task.description}</small>}</span></button></td><td>{task.project || 'No project'}</td><td><span className="task-list-provider"><ProviderMark provider={task.provider} small />{providerLabel(task.provider)}</span></td><td><span className={`priority ${task.priority}`}><i />{task.priority}</span></td><td><label className="status-select"><span className="sr-only">Status of {task.title}</span><select value={task.status} disabled={busyTask === task.id} onChange={event => moveTask(task, event.target.value as TaskStatus)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select>{busyTask === task.id ? <LoaderCircle size={12} className="spin" /> : <ChevronDown size={12} />}</label></td><td>{task.sessionId ? linked ? <button className="task-session-link" onClick={() => onOpen(linked)} aria-label={`Open linked session for ${task.title}`}><Link2 size={13} /><span>Open session</span><ArrowUpRight size={12} /></button> : <span className="task-session-unavailable" title="Unavailable in currently loaded sessions; this does not prove deletion." aria-label="Linked session unavailable in loaded sessions"><Link2 size={13} />Unavailable in loaded sessions</span> : <span>—</span>}</td></tr>;
     })}</tbody></table>{!filtered.length && <EmptyState title={tasks.length ? 'No tasks match' : 'No tasks yet'} description={tasks.length ? 'Try another search or choose a different filter.' : 'Add a task from the board to start planning.'} />}</section>}
