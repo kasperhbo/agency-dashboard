@@ -139,7 +139,7 @@ export default function App() {
           {page === 'tasks' && <TasksPage tasks={workspace.tasks} sessions={workspace.sessions} onOpen={setSelected} newTask={newTask} editTask={task => setEditor({ task })} moveTask={(task, status) => void changeTask(task, status)} busyTask={busyTask} />}
           {page === 'activity' && <ActivityPage sessions={workspace.sessions} onOpen={setSelected} />}
           {page === 'insights' && <Insights sessions={workspace.sessions} tasks={workspace.tasks} usage={workspace.usage} mode={workspace.mode} observedAt={workspace.scannedAt} onOpen={setSelected} />}
-          {page === 'settings' && <SettingsPage mode={workspace.mode} setMode={workspace.setMode} sources={workspace.sources} refreshing={workspace.refreshing} refresh={() => void workspace.refresh()} theme={appearance} setTheme={setTheme} resetDemo={workspace.resetDemo} notify={notify} />}
+          {page === 'settings' && <SettingsPage mode={workspace.mode} setMode={workspace.setMode} sources={workspace.sources} scannedAt={workspace.scannedAt} refreshing={workspace.refreshing} refresh={() => void workspace.refresh()} theme={appearance} setTheme={setTheme} resetDemo={workspace.resetDemo} notify={notify} />}
         </>}
         <footer className="page-footer"><span><AgencyMark small />A little more clarity. A little less tab-switching.</span><span>Agency v1.0<span className="footer-dot">·</span>{workspace.mode === 'demo' ? 'Sample data' : workspace.scannedAt ? `Scanned ${new Date(workspace.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Local only'}</span></footer>
       </main>

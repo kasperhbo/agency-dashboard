@@ -14,8 +14,8 @@ User authorization: implement the agreed dashboard backlog in small batches, mai
 
 | Batch | Scope | Status | Evidence / PR |
 | --- | --- | --- | --- |
-| 0 | Preserve and publish existing dashboard resilience, accessible inspection, CSV export, and task-link integrity work | Fresh independent review in progress | Existing verification: build, 76 backend tests, 64 browser tests, 3 isolated staging checks; scoped coverage 98.07% lines |
-| 1 | Guided connection diagnostics in existing Settings | Assigned to Feature Dev; waiting baseline snapshot | No parser changes or unsupported native activity claims |
+| 0 | Preserve and publish existing dashboard resilience, accessible inspection, CSV export, and task-link integrity work | Reviewed; additional incomplete-demo-metadata crash fixed | [PR #1](https://github.com/kasperhbo/agency-dashboard/pull/1); build, 76 backend, 64 browser, 3 staging; scoped coverage 98.07%; additional 3 resilience checks passed |
+| 1 | Guided connection diagnostics in existing Settings | Implemented and independently reviewed; 4 focused browser checks passed | Extends Settings with observed snapshot age and manual root guidance; hides retained local paths in demo; no native activity claim |
 | 2 | Per-run usage coverage filtering | Assigned to Frontend Developer; waiting baseline snapshot | Keep workspace totals, daily chart, and CSV scope unchanged |
 | 3 | Task priority filtering and deterministic ordering | Queued | Reuse existing task fields; no writes from sorting |
 | 4 | Local task JSON backup download | Queued | Active source only; load/stale context; no restore claim |
@@ -23,3 +23,9 @@ User authorization: implement the agreed dashboard backlog in small batches, mai
 | 6 | Workspace-scoped Agents filter/view preferences | Queued after visibility work | Explicit reset and safe storage fallback |
 
 Feature definitions and acceptance: [feature proposals](feature-proposals-2026-10-16.md). New work must retain loopback privacy, bounded observation, unknown-value semantics, revision checks, and atomic task persistence.
+
+## Integration notes
+
+- GitHub connector cannot create PRs (`403 Resource not accessible by integration`); existing noninteractive Git credentials successfully created PR #1 through the GitHub API. Credentials remain in memory and are never logged or committed.
+- A fresh baseline reviewer found that incomplete persisted demo tasks could crash the overview's timestamp sort. The loader now validates revision/timestamps and falls back without overwriting invalid saved data. Regression passed.
+- Combined diagnostics/coverage focused run passed 7 tests after correcting a test-only `innerText`/`textContent` comparison; no production behavior was changed to satisfy that assertion.

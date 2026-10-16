@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, Folder, Info, LayoutGrid, Link2, List, LoaderCircle, Plus, RefreshCw, Search, Terminal, Trash2 } from 'lucide-react';
 import { EmptyState, ProviderMark, SectionHeading, SessionCard, StatusBadge } from './components';
 import { ActivityFeed } from './Overview';
+import { useObservationClock } from './useObservationClock';
+import { utcTime } from './usage-view';
 import { compact, providerLabel, taskStatusLabel, timeAgo, type Mode, type Provider, type Session, type Source, type Task, type TaskStatus } from './types';
 
 function connectionSummary(source: Source) {
-  if (source.status === 'not_found') return 'Session directory not found. Run this agent once to create it.';
+  if (source.status === 'not_found') return 'Session directory not found. Compare this path with the directory used by your CLI account.';
   if (source.status !== 'connected') return 'Session directory could not be read. Check permissions.';
   return `${source.count} observed logs${source.sessionCount !== undefined ? ` · ${source.sessionCount} unique sessions · ${source.subagentCount ?? 0} subagents` : ''}${source.limited ? ' · scan limit reached' : ''}`;
 }
@@ -51,13 +53,42 @@ export function ActivityPage({ sessions, onOpen }: { sessions: Session[]; onOpen
   return <><FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search activity…" /><section className="panel activity-page-panel"><SectionHeading title="The story so far" description="Most recent supported events from your agent sessions" /><ActivityFeed sessions={sessions} onOpen={onOpen} full query={query} provider={provider} /></section><p className="page-footnote"><Info size={13} />Up to 100 events displayed. Open a session to see its recent history.</p></>;
 }
 
-export function SettingsPage({ mode, setMode, sources, refreshing, refresh, theme, setTheme, resetDemo, notify }: {
-  mode: Mode; setMode: (mode: Mode) => void; sources: Source[]; refreshing: boolean; refresh: () => void;
+export function SettingsPage({ mode, setMode, sources, scannedAt, refreshing, refresh, theme, setTheme, resetDemo, notify }: {
+  mode: Mode; setMode: (mode: Mode) => void; sources: Source[]; scannedAt: string; refreshing: boolean; refresh: () => void;
   theme: string; setTheme: (theme: string) => void; resetDemo: () => void; notify: (message: string) => void;
 }) {
   const [resetConfirm, setResetConfirm] = useState(false);
+  const now = useObservationClock(mode === 'local');
+  const observation = Date.parse(scannedAt);
+  const ageMinutes = Math.max(0, Math.floor((now - observation) / 60000));
   return <div className="settings-layout"><section className="panel settings-section"><SectionHeading title="Your workspace" description="Choose where Agency gets its information." /><div className="source-picker">{(['demo', 'local'] as const).map(value => <button key={value} className={mode === value ? 'selected' : ''} aria-pressed={mode === value} onClick={() => setMode(value)}><span className="source-choice-icon">{value === 'demo' ? <LayoutGrid size={22} /> : <Terminal size={22} />}</span><strong>{value === 'demo' ? 'Demo workspace' : 'Local workspace'}</strong><p>{value === 'demo' ? 'Explore sample agents and try the task board. Tasks stay in this browser.' : 'Discover your Claude and Codex sessions. Tasks stay on this computer.'}</p><span className="radio-dot" /></button>)}</div><p className="info-note">Local discovery reads session metadata from this computer. Your logs stay on this computer. Agency never modifies native agent files or installs hooks.</p></section>
-    <section className="panel settings-section"><SectionHeading title="Agent connections" description="No API keys. Just your local session logs." action={<button className="button secondary small-button" disabled={refreshing} onClick={refresh}><RefreshCw size={14} className={refreshing ? 'spin' : ''} />{refreshing ? 'Checking…' : 'Check connections'}</button>} />{(['claude', 'codex'] as Provider[]).map(provider => { const source = sources.find(s => s.provider === provider); return <div className="connection-row" key={provider}><ProviderMark provider={provider} /><div className="connection-copy"><strong>{providerLabel(provider)}{provider === 'claude' ? ' Code' : ''}</strong><span>{source?.path || (provider === 'claude' ? '~/.claude/projects' : '~/.codex/sessions')}</span><p>{!source ? 'Check connections to discover local logs.' : connectionSummary(source)}</p>{source?.warnings.map(w => <p className="amber-text" key={w}>{w}</p>)}</div><span className={`connection-state ${source?.status === 'connected' ? 'connected' : ''}`}><i />{!source ? 'Not checked' : source.status === 'connected' ? 'Connected' : source.status === 'not_found' ? 'Not found' : 'Error'}</span></div>; })}<p className="info-note">Custom locations: set AGENCY_CLAUDE_ROOT or AGENCY_CODEX_ROOT before starting the server. CODEX_HOME is also respected. Local discovery refreshes every 10 seconds while the app is visible.</p></section>
+    <section className="panel settings-section" aria-label="Agent connections">
+      <SectionHeading title="Agent connections" description="No API keys. Just your local session logs." action={<button className="button secondary small-button" disabled={refreshing || mode !== 'local'} onClick={refresh}><RefreshCw size={14} className={refreshing ? 'spin' : ''} />{refreshing ? 'Checking…' : 'Check connections'}</button>} />
+      {mode === 'demo' ? <p className="info-note">Demo workspace uses sample sessions. Select Local workspace above to inspect this server's source paths and connection observations.</p> : <>
+        <p className="info-note">Snapshot observed: {Number.isFinite(observation) ? <time dateTime={scannedAt}>{utcTime(scannedAt)} · {ageMinutes < 1 ? 'less than 1 minute ago' : `${ageMinutes} minutes ago`}</time> : 'Not yet observed'}. This is when Agency checked the logs, not when an agent last worked.</p>
+        {(['claude', 'codex'] as Provider[]).map(provider => {
+          const source = sources.find(s => s.provider === provider);
+          return <div className="connection-row" key={provider}>
+            <ProviderMark provider={provider} />
+            <div className="connection-copy">
+              <strong>{providerLabel(provider)}{provider === 'claude' ? ' Code' : ''}</strong>
+              <span>{source?.path || 'Resolved source path not yet observed'}</span>
+              <p>{!source ? 'No connection observation for this provider. Check connections to read the server’s configured source.' : connectionSummary(source)}</p>
+              {source?.warnings.map(w => <p className="amber-text" key={w}>{w}</p>)}
+              <details>
+                <summary>Missing expected {providerLabel(provider)} sessions?</summary>
+                <p>Connected means the configured directory can be read. It does not confirm that your CLI writes there, that an expected session was scanned, or that a process is running.</p>
+                <p>Compare the source path above with the directory used by the account running your CLI. A readable directory can belong to a different account; missing or old observations alone do not establish a mismatch.</p>
+                <p>{provider === 'codex' ? <>The server uses <code>AGENCY_CODEX_ROOT</code> first, otherwise <code>CODEX_HOME/sessions</code> when <code>CODEX_HOME</code> is set, otherwise <code>~/.codex/sessions</code> under the server account.</> : <>The server uses <code>AGENCY_CLAUDE_ROOT</code> first, otherwise <code>~/.claude/projects</code> under the server account.</>}</p>
+                <p>If the account or source environment is wrong, correct it before starting the server, restart Agency, then choose Check connections. This page does not change source paths or switch accounts.</p>
+                <p>Visible Local workspace tabs check every 10 seconds. Scans are bounded; warnings above describe observed limits. Session activity is inferred from supported logs, not live process monitoring.</p>
+              </details>
+            </div>
+            <span className={`connection-state ${source?.status === 'connected' ? 'connected' : ''}`}><i />{!source ? 'Not checked' : source.status === 'connected' ? 'Connected' : source.status === 'not_found' ? 'Not found' : 'Error'}</span>
+          </div>;
+        })}
+      </>}
+    </section>
     <section className="panel settings-section"><SectionHeading title="Make yourself at home" /><div className="setting-row"><div><strong>Appearance</strong><p>A little easier on the eyes.</p></div><select aria-label="Appearance" value={theme} onChange={e => setTheme(e.target.value)}><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select></div><div className="setting-row"><div><strong>Keyboard shortcuts</strong><p>Move around without breaking your flow.</p></div><div className="shortcut-list"><span>Search <kbd>Ctrl K</kbd></span><span>New task <kbd>N</kbd></span><span>Close dialog <kbd>Esc</kbd></span></div></div></section>
     <section className="panel settings-section"><SectionHeading title="About Agency" description="A calmer workspace for your Claude and Codex agents." /><p className="settings-about">Inspired by the observable agent workspaces in AgentGUI and the unified workflow of FounderOS. Built as an independent local app.</p><div className="reference-links"><a href="https://agent-gui-project.github.io/" target="_blank" rel="noreferrer">AgentGUI <ArrowUpRight size={14} /></a><a href="https://founderos.sh/" target="_blank" rel="noreferrer">FounderOS <ArrowUpRight size={14} /></a></div><p className="info-note">This version observes sessions and organizes tasks. Agent commands, native approvals, and billing remain in their original tools. Token totals are not cost estimates.</p><div className="setting-row"><div><strong>Reset demo tasks</strong><p>Restore the sample board. Local workspace tasks are preserved.</p></div>{resetConfirm ? <div className="inline-actions"><button className="button secondary small-button" onClick={() => setResetConfirm(false)}>Cancel</button><button className="button danger small-button" onClick={() => { try { resetDemo(); notify('Demo task board restored'); setResetConfirm(false); } catch (e) { notify((e as Error).message); } }}>Reset demo</button></div> : <button className="button secondary small-button" onClick={() => setResetConfirm(true)}><Trash2 size={14} />Reset demo</button>}</div></section>
     {mode === 'demo' && <button className="button primary settings-connect" onClick={() => { setMode('local'); notify('Switched to your local workspace'); }}>Connect local agents <ArrowRight size={16} /></button>}
