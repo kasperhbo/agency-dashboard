@@ -35,8 +35,10 @@ Open **http://127.0.0.1:4318**. Fonts and assets are bundled locally. No API key
 - Session-linked follow-up tasks, with navigation from task to session and linked tasks inside session details. Change or remove a link in the task editor.
 - Activity feed, provider usage breakdown, and project summaries.
 - **Usage & insights** shows input/output, cache-read/cache-write, reported reasoning, dated UTC usage, per-log coverage, model context snapshots, provider quota snapshots, and native CLI cost estimates where available.
+- **Export CSV** downloads the selected usage providers and period locally, with deduplicated summaries, dated records, source timestamps, and coverage caveats. Unknown values remain distinct from zero; undated usage is identified separately. Summary and daily rows must not be added together. Session paths, prompts, credentials, and billing estimates are excluded.
 - Global search with **Ctrl/Cmd K**, **N** for a new task, and **Esc** to close dialogs.
-- Dark/light themes, mobile navigation, focus-contained dialogs, and reduced-motion support.
+- Dark/light/system appearance with live system updates, mobile navigation, focus-contained dialogs, and reduced-motion support.
+- A recovery screen offers a reload after an unexpected rendering error, preserving saved tasks and preferences.
 - Demo tasks persist in browser storage; local tasks persist on disk, with revision checks for concurrent edits.
 
 The dashboard observes agents and organizes work. Tasks do not start agents. It does not intercept approvals, run terminal commands, or modify agent logs or hook configuration.
@@ -47,7 +49,7 @@ Open **Projects** to browse work by project label. Each project shows its sessio
 
 Open a session and choose **Create follow-up task** to preserve a link to that session. The task editor can also link any observed session from the assigned provider. The task board’s **Linked session** opens the source; session details show connected tasks. Changing the provider clears the link to prevent associating a Claude task with a Codex session or vice versa.
 
-Links persist across reloads. When a session falls outside the recent scan or is removed, its reference is preserved and shown as unavailable; you can explicitly unlink it. Existing task files work without migration, and edits from older clients that omit the session reference preserve it. Demo and local sources remain separate.
+Links persist across reloads. When a session falls outside the recent scan or is removed, its reference is preserved and shown as unavailable; you can explicitly unlink it. Existing task files work without migration. Edits from older clients that omit the session reference preserve it when the provider stays the same; changing the provider clears the inherited link. Demo and local sources remain separate.
 
 Projects are grouped by their recorded labels, not canonical filesystem paths. Directories with the same basename are combined. These groups organize work; they do not grant filesystem access.
 
@@ -63,6 +65,8 @@ Default discovery locations:
 | Codex | `$CODEX_HOME/sessions`, or `~/.codex/sessions` |
 
 Start a native session in Claude Code or Codex, then select Local workspace. Agency refreshes every 10 seconds while the tab is visible. Settings shows the actual resolved directories, missing connections, read errors, and scan limits.
+
+On Windows, run Agency under the same account as your agents. A server started as another user reads that user's home directory, so current sessions can be missing even when Settings reports a connected source. Compare the resolved path in Settings with your agent's log directory; restart under the correct account or set the explicit roots below. Source environment changes require restarting the API.
 
 Custom roots are read from the server environment. PowerShell example:
 

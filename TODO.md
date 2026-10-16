@@ -1,6 +1,28 @@
 # Agency implementation plan and tracker
 
 Goal: a polished, runnable local workspace for tracking Claude and Codex agents.
+
+## Completion follow-up — 2026-10-16
+
+- [x] Convene backend, frontend, Engineering Senior Developer, and user-requested Feature Dev; senior approves task-link integrity fix and local usage CSV export.
+- [x] Clear inherited session references on provider changes from legacy API clients while preserving same-provider omissions, explicit references, revision conflicts, and atomic persistence.
+- [x] Export selected provider/period usage as privacy-conscious local CSV with deduplicated summaries, separate dated rows, unknown/zero/undated distinctions, source/coverage context, and spreadsheet formula protection.
+- [x] Verify 76 backend tests and scoped coverage (98.07% lines), production build, 64 browser tests (4 staging-conditional cases skipped), and 3 isolated staging checks. Production dependency audit reports 0 known vulnerabilities.
+- [x] Diagnose missing live Codex sessions: the previous server read a different Windows account's logs. Restart with the correct source; verify 12 Codex log rows in the actual Local workspace UI and a current running observation. Document account/root troubleshooting in README.
+
+Review and decisions: [production readiness review](docs/production-readiness-2026-10-16.md). No public deployment or native execution integration was added. Existing changes were preserved.
+
+## Production readiness continuation — 2026-10-16
+
+- [x] Inspect `.codex/agents`; backend, frontend, and engineering senior developer discuss and select a bounded resilience batch.
+- [x] Preserve multibyte task text across streamed HTTP chunks; return HTTP 400 for malformed encoded static paths, retaining request byte limits and access guards.
+- [x] Add persisted system appearance with live OS updates and explicit light/dark overrides.
+- [x] Add root render recovery with reload while preserving saved tasks and preferences.
+- [x] Verify production build, 75 backend tests and required scoped coverage gate (98.07% lines), 60 browser tests (4 conditional staging cases skipped), and 3 isolated staging checks.
+- [x] Audit production dependencies: 0 known vulnerabilities reported by `npm audit --omit=dev`.
+
+Decision and deferred proposals: [production readiness review](docs/production-readiness-2026-10-16.md). Existing uncommitted work was preserved. This verifies the documented single-user loopback application; no public deployment, real-device/screen-reader audit, or measured performance guarantee is claimed. Chromium required by the installed Playwright was downloaded before browser verification.
+
 Architecture: React UI with separate demo/local sources; a loopback Node API discovers native logs read-only and persists local tasks atomically.
 Design: [docs/design.md](docs/design.md). Execution: implement inline in this session.
 

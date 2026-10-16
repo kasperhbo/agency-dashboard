@@ -9,7 +9,7 @@ export function writePreference(key: string, value: string) {
   try { localStorage.setItem(`agency.${key}`, value); return true; } catch { return false; }
 }
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...options?.headers } });
+  const response = await fetch(url, { ...options, signal: options?.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json', ...options?.headers } });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed. Try again.');
   return data;
@@ -31,28 +31,66 @@ export function useWorkspace() {
   const [sampleTasks, setSampleTasks] = useState<Task[]>(initialDemoTasks);
   const sampleRef = useRef(sampleTasks);
   sampleRef.current = sampleTasks;
-  const [error, setError] = useState('');
+  const [sessionError, setSessionError] = useState('');
+  const [taskError, setTaskError] = useState('');
+  const [tasksUpdatedAt, setTasksUpdatedAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [storageError, setStorageError] = useState('');
-  const refreshingRef = useRef(false);
+  const scope = useRef(0);
+  const refreshController = useRef<AbortController | null>(null);
+  const mutations = useRef(new Set<AbortController>());
+  const taskGeneration = useRef(0);
   const refresh = useCallback(async (silent = false) => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
+    if (modeRef.current !== 'local' || refreshController.current) return;
+    const controller = new AbortController();
+    refreshController.current = controller;
+    const currentScope = scope.current;
+    const tasksGeneration = taskGeneration.current;
+    const current = () => !controller.signal.aborted && scope.current === currentScope && modeRef.current === 'local';
     if (!silent) setRefreshing(true);
-    const results = await Promise.allSettled([request<Snapshot>('/api/sessions'), request<Task[]>('/api/tasks')]);
-    if (results[0].status === 'fulfilled') setSnapshot(results[0].value);
-    if (results[1].status === 'fulfilled') setLocalTasks(results[1].value);
-    const failed = results.filter(r => r.status === 'rejected');
-    setError(failed.map(r => r.status === 'rejected' ? r.reason.message : '').join(' '));
-    setRefreshing(false); setLoading(false); refreshingRef.current = false;
+    await Promise.allSettled([
+      (async () => {
+        try {
+          const result = await request<Snapshot>('/api/sessions', { signal: controller.signal });
+          if (current()) { setSnapshot(result); setSessionError(''); }
+        } catch (error) {
+          if (current()) setSessionError((error as Error).message);
+        } finally { if (current()) setLoading(false); }
+      })(),
+      (async () => {
+        try {
+          const result = await request<Task[]>('/api/tasks', { signal: controller.signal });
+          // A list read before or during a write cannot replace that write's result.
+          if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0) {
+            setLocalTasks(result); setTaskError(''); setTasksUpdatedAt(new Date().toISOString());
+          }
+        } catch (error) {
+          if (current() && taskGeneration.current === tasksGeneration && mutations.current.size === 0) setTaskError((error as Error).message);
+        }
+      })(),
+    ]);
+    if (current()) setRefreshing(false);
+    if (refreshController.current === controller) refreshController.current = null;
   }, []);
   useEffect(() => {
     if (mode !== 'local') return;
     setLoading(true);
     void refresh();
-    const interval = window.setInterval(() => { if (!document.hidden) void refresh(true); }, 10000);
-    return () => window.clearInterval(interval);
+    const resume = () => { if (!document.hidden) void refresh(true); };
+    const interval = window.setInterval(resume, 10000);
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', resume);
+      scope.current++;
+      refreshController.current?.abort();
+      refreshController.current = null;
+      for (const controller of mutations.current) controller.abort();
+      mutations.current.clear();
+    };
   }, [mode, refresh]);
   const setMode = (value: Mode) => {
     if (!writePreference('mode', value)) setStorageError('Browser storage is unavailable. Your workspace preference will reset after reload.');
@@ -71,17 +109,31 @@ export function useWorkspace() {
       const next: Task = { ...input, id: task?.id || crypto.randomUUID(), revision: (task?.revision || 0) + 1, createdAt: task?.createdAt || now, updatedAt: now };
       saveDemo(task ? sampleRef.current.map(t => t.id === task.id ? next : t) : [next, ...sampleRef.current]);
     } else {
-      const result = await request<Task>(task ? `/api/tasks/${task.id}` : '/api/tasks', { method: task ? 'PATCH' : 'POST', body: JSON.stringify({ ...input, revision: task?.revision }) });
-      setLocalTasks(tasks => task ? tasks.map(t => t.id === task.id ? result : t) : [result, ...tasks]);
+      const controller = new AbortController(), currentScope = scope.current;
+      mutations.current.add(controller); taskGeneration.current++;
+      try {
+        const result = await request<Task>(task ? `/api/tasks/${task.id}` : '/api/tasks', { method: task ? 'PATCH' : 'POST', body: JSON.stringify({ ...input, revision: task?.revision }), signal: controller.signal });
+        if (!controller.signal.aborted && scope.current === currentScope) {
+          setLocalTasks(tasks => task ? tasks.map(t => t.id === task.id ? result : t) : [result, ...tasks]);
+          setTaskError(''); setTasksUpdatedAt(new Date().toISOString());
+        }
+      } finally { mutations.current.delete(controller); if (scope.current === currentScope) taskGeneration.current++; }
     }
   }
   async function deleteTask(task: Task) {
     if (modeRef.current === 'demo') saveDemo(sampleRef.current.filter(t => t.id !== task.id));
     else {
-      await request(`/api/tasks/${task.id}`, { method: 'DELETE', body: JSON.stringify({ revision: task.revision }) });
-      setLocalTasks(tasks => tasks.filter(t => t.id !== task.id));
+      const controller = new AbortController(), currentScope = scope.current;
+      mutations.current.add(controller); taskGeneration.current++;
+      try {
+        await request(`/api/tasks/${task.id}`, { method: 'DELETE', body: JSON.stringify({ revision: task.revision }), signal: controller.signal });
+        if (!controller.signal.aborted && scope.current === currentScope) {
+          setLocalTasks(tasks => tasks.filter(t => t.id !== task.id));
+          setTaskError(''); setTasksUpdatedAt(new Date().toISOString());
+        }
+      } finally { mutations.current.delete(controller); if (scope.current === currentScope) taskGeneration.current++; }
     }
   }
   function resetDemo() { saveDemo(demoTasks); }
-  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing, error: mode === 'local' ? error : '', storageError, refresh, saveTask, deleteTask, resetDemo };
+  return { mode, setMode, sessions: mode === 'demo' ? demoSessions : snapshot.sessions, tasks: mode === 'demo' ? sampleTasks : localTasks, usage: mode === 'demo' ? demoUsage : snapshot.usage, topology: mode === 'local' ? snapshot.topology : undefined, sources: snapshot.sources, scannedAt: snapshot.scannedAt, loading: mode === 'local' && loading, refreshing: mode === 'local' && refreshing, error: mode === 'local' ? [sessionError, taskError].filter(Boolean).join(' ') : '', sessionError: mode === 'local' ? sessionError : '', taskError: mode === 'local' ? taskError : '', tasksUpdatedAt: mode === 'local' ? tasksUpdatedAt : '', storageError, refresh, saveTask, deleteTask, resetDemo };
 }
