@@ -4,7 +4,7 @@ const order = (a, b) => rank(a) - rank(b) || String(b.updatedAt || '').localeCom
 
 /** Deterministic, bounded tree layout. Membership and lineage remain separate. */
 export function layoutTopology(graph, options = {}) {
-  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, familyLimit = 2, childLimit = 3, expanded = [], focusId, now = Date.now() } = options;
+  const { provider = 'all', project = 'all', folder = 'all', query = '', activeOnly = false, includeIdle = false, familyLimit = 2, childLimit = 3, expanded = [], focusId, now = Date.now() } = options;
   const expandedIds = new Set(expanded);
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
   const folderMode = graph.nodes.some(node => node.kind === 'folder');
@@ -26,12 +26,17 @@ export function layoutTopology(graph, options = {}) {
     const updatedAt = Date.parse(node.updatedAt || '');
     return !Number.isFinite(updatedAt) || now - updatedAt < 24 * 60 * 60 * 1000;
   };
-  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && inScope(node) && historyVisible(node) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.workingDirectory || ''} ${nodes.get(node.folderId)?.workingDirectory || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
+  const runVisible = node => historyVisible(node) && (includeIdle || node.status !== 'idle');
+  const matches = [...nodes.values()].filter(node => runs.has(node.kind) && inScope(node) && runVisible(node) && (!activeOnly || ['running', 'waiting', 'error'].includes(node.status)) && `${node.label} ${node.model || ''} ${node.project || ''} ${node.workingDirectory || ''} ${nodes.get(node.folderId)?.workingDirectory || ''} ${node.nativeId || ''}`.toLowerCase().includes(search));
   const included = new Set(matches.map(node => node.id));
   if (search && !activeOnly) {
     const queue = [...included];
+    const visited = new Set(queue);
     while (queue.length) for (const child of children.get(queue.shift()) || []) {
-      if (!included.has(child.id) && inScope(child) && historyVisible(child)) { included.add(child.id); queue.push(child.id); }
+      if (!visited.has(child.id) && inScope(child) && historyVisible(child)) {
+        visited.add(child.id); queue.push(child.id);
+        if (runVisible(child)) included.add(child.id);
+      }
     }
   }
   for (const match of [...included]) {
@@ -40,19 +45,19 @@ export function layoutTopology(graph, options = {}) {
     while (incoming.has(id)) {
       const ancestor = nodes.get(incoming.get(id).source);
       if (seen.has(ancestor.id) || !allowed(ancestor)) break;
-      if (runs.has(ancestor.kind) && !historyVisible(ancestor)) break;
+      if (runs.has(ancestor.kind) && !runVisible(ancestor)) break;
       included.add(ancestor.id); seen.add(ancestor.id); id = ancestor.id;
     }
   }
   // If a filtered historical parent separates a visible descendant from its folder,
   // connect that first visible descendant to the same folder in this filtered view.
+  // Idle parents follow the same rule, using provider membership in legacy graphs.
   for (const id of included) {
     const parentLink = incoming.get(id);
     const run = nodes.get(id);
-    const folderId = run.folderId;
-    if (!runs.has(run.kind) || !folderId || !parentLink || parentLink.kind !== 'parent-child' || included.has(parentLink.source)) continue;
-    const folderNode = nodes.get(folderId);
-    if (folderNode && !edges.some(edge => edge.source === folderId && edge.target === id)) edges.push({ id: `filtered-folder:${folderId}:${id}`, source: folderId, target: id, kind: 'membership', evidence: 'folder', animated: false });
+    if (!runs.has(run.kind) || !parentLink || parentLink.kind !== 'parent-child' || included.has(parentLink.source)) continue;
+    const container = folderMode ? nodes.get(run.folderId) : [...nodes.values()].find(node => node.kind === 'provider' && node.provider === run.provider);
+    if (container && !edges.some(edge => edge.source === container.id && edge.target === id)) edges.push({ id: `filtered-membership:${container.id}:${id}`, source: container.id, target: id, kind: 'membership', evidence: folderMode ? 'folder' : 'provider', animated: false });
   }
   const visibleRuns = [...included].filter(id => runs.has(nodes.get(id).kind));
   // Reveal only the requested ancestor path; filters and normal collapse limits still apply.
