@@ -76,14 +76,18 @@ export function ActivityChart({ sessions, large = false }: { sessions: Session[]
 }
 
 export function ActivityFeed({ sessions, onOpen, full = false, query = '', provider = 'all' }: { sessions: Session[]; onOpen: (s: Session) => void; full?: boolean; query?: string; provider?: string }) {
-  const events = sessions.flatMap(s => s.events.map(e => ({ ...e, session: s }))).filter(e => (provider === 'all' || e.session.provider === provider) && `${e.label} ${e.session.title} ${e.session.project} ${e.session.name || ''}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const retained = sessions.flatMap(s => s.events.map(e => ({ ...e, session: s })));
+  const events = retained.filter(e => (provider === 'all' || e.session.provider === provider) && `${e.label} ${e.session.title} ${e.session.project} ${e.session.name || ''}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   const displayed = events.slice(0, full ? 100 : 6);
-  if (!displayed.length) return <EmptyState title="A quiet moment" description="Session activity will appear here as your agents work." />;
-  return <div className={`activity-feed ${full ? 'full' : ''}`}>{displayed.map((event, index) => <button className="activity-item" key={`${event.session.id}-${event.id}`} onClick={() => onOpen(event.session)}>
+  if (!full && !displayed.length) return <EmptyState title="A quiet moment" description="Session activity will appear here as your agents work." />;
+  return <>
+    {full && <><p className="field-help" role="status" aria-label="Activity result counts">Showing {displayed.length} of {events.length} matching events · {retained.length} retained supported events in the current workspace</p><p className="field-help">Only currently loaded, retained events are searched, with at most 100 matches displayed. Agency retains a bounded recent event list per loaded session; this is not complete history or live process activity.</p></>}
+    {!displayed.length ? <EmptyState title={retained.length ? 'No activity matches' : 'No retained activity'} description={retained.length ? 'Reset activity filters or try another search or provider.' : 'No supported events are retained in the currently loaded workspace data. This does not establish that no agent activity occurred.'} /> : <div className={`activity-feed ${full ? 'full' : ''}`}>{displayed.map((event, index) => <button className="activity-item" key={`${event.session.id}-${event.id}`} onClick={() => onOpen(event.session)}>
     <span className={`feed-icon ${event.kind}`}>{event.kind === 'success' ? <Check size={14} /> : event.kind === 'tool' ? <Code2 size={14} /> : event.kind === 'waiting' ? <Clock3 size={14} /> : <Zap size={14} />}</span>
     <span className="feed-copy"><span><strong>{event.session.name || providerLabel(event.session.provider)}</strong> {event.label.toLowerCase()}</span><small><span className={`provider-text ${event.session.provider}`}>{providerLabel(event.session.provider)}</span><i />{event.session.project}</small><time>{timeAgo(event.timestamp)}</time></span>
     {full && <ArrowUpRight size={15} className="muted" />}{index < displayed.length - 1 && <i className="feed-line" />}
-  </button>)}</div>;
+  </button>)}</div>}
+  </>;
 }
 
 export function Overview({ sessions, tasks, usage, topology, mode, observed, attention, onAttention, onOpen, navigate, newTask, toggleTask, editTask, busyTask, connect }: {
