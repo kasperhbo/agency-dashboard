@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowLeft, ArrowUpRight, Folder, Info, Plus, Search } from 'lucide-react';
 import { EmptyState, ProviderMark, SectionHeading, SessionCard, TaskRow } from './components';
+import { ActivityFeed } from './Overview';
 import { compact, timeAgo, type Mode, type Session, type Task } from './types';
 
 const label = (name: string) => name.trim() || 'Unassigned';
@@ -16,9 +17,10 @@ export function ProjectsPage({ sessions, tasks, mode, onOpen, newTask, editTask,
   const [taskLimit, setTaskLimit] = useState(20);
   const [taskStatus, setTaskStatus] = useState('all');
   const [taskPriority, setTaskPriority] = useState('all');
-  const [activeTab, setActiveTab] = useState<'sessions' | 'tasks'>('sessions');
+  const [activeTab, setActiveTab] = useState<'sessions' | 'tasks' | 'activity'>('sessions');
   const sessionsTab = useRef<HTMLButtonElement>(null);
   const tasksTab = useRef<HTMLButtonElement>(null);
+  const activityTab = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const projects = useMemo(() => {
     const names = new Set([...sessions.map(s => label(s.project)), ...tasks.map(t => label(t.project))]);
@@ -30,6 +32,7 @@ export function ProjectsPage({ sessions, tasks, mode, onOpen, newTask, editTask,
     }).sort((a, b) => b.updated - a.updated || a.name.localeCompare(b.name));
   }, [sessions, tasks]);
   const current = projects.find(project => project.name === selected);
+  const currentEventCount = current?.sessions.reduce((count, session) => count + session.events.length, 0) ?? 0;
   const filteredTasks = (current?.tasks ?? []).filter(task => (taskStatus === 'all' || (taskStatus === 'open' ? task.status !== 'done' : task.status === 'done')) && (taskPriority === 'all' || task.priority === taskPriority));
   const visible = projects.filter(project => project.name.toLowerCase().includes(query.toLowerCase().trim()));
   function select(name: string | null) {
@@ -39,14 +42,14 @@ export function ProjectsPage({ sessions, tasks, mode, onOpen, newTask, editTask,
     requestAnimationFrame(() => heading.current?.focus());
   }
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    const tabs = [sessionsTab, tasksTab];
-    const currentIndex = activeTab === 'sessions' ? 0 : 1;
+    const tabs = [sessionsTab, tasksTab, activityTab];
+    const currentIndex = activeTab === 'sessions' ? 0 : activeTab === 'tasks' ? 1 : 2;
     const nextIndex = event.key === 'ArrowRight' ? (currentIndex + 1) % tabs.length
       : event.key === 'ArrowLeft' ? (currentIndex + tabs.length - 1) % tabs.length
         : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
     if (nextIndex < 0) return;
     event.preventDefault();
-    const next = nextIndex === 0 ? 'sessions' : 'tasks';
+    const next = (['sessions', 'tasks', 'activity'] as const)[nextIndex];
     setActiveTab(next);
     tabs[nextIndex].current?.focus();
   }
@@ -65,6 +68,7 @@ export function ProjectsPage({ sessions, tasks, mode, onOpen, newTask, editTask,
         <div className="project-detail-tab-list" role="tablist" aria-label={`${current.name} project details`} style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           <button ref={sessionsTab} className="button secondary" style={{ background: activeTab === 'sessions' ? 'var(--purple-tint)' : undefined, borderColor: activeTab === 'sessions' ? 'var(--purple)' : undefined }} id="project-sessions-tab" type="button" role="tab" aria-selected={activeTab === 'sessions'} aria-controls="project-sessions-panel" tabIndex={activeTab === 'sessions' ? 0 : -1} onClick={() => setActiveTab('sessions')} onKeyDown={handleTabKeyDown}>Sessions <span>{current.sessions.length}</span></button>
           <button ref={tasksTab} className="button secondary" style={{ background: activeTab === 'tasks' ? 'var(--purple-tint)' : undefined, borderColor: activeTab === 'tasks' ? 'var(--purple)' : undefined }} id="project-tasks-tab" type="button" role="tab" aria-selected={activeTab === 'tasks'} aria-controls="project-tasks-panel" tabIndex={activeTab === 'tasks' ? 0 : -1} onClick={() => setActiveTab('tasks')} onKeyDown={handleTabKeyDown}>Tasks <span>{current.tasks.length}</span></button>
+          <button ref={activityTab} className="button secondary" style={{ background: activeTab === 'activity' ? 'var(--purple-tint)' : undefined, borderColor: activeTab === 'activity' ? 'var(--purple)' : undefined }} id="project-activity-tab" type="button" role="tab" aria-selected={activeTab === 'activity'} aria-controls="project-activity-panel" tabIndex={activeTab === 'activity' ? 0 : -1} onClick={() => setActiveTab('activity')} onKeyDown={handleTabKeyDown}>Activity <span>{currentEventCount}</span></button>
         </div>
         <section id="project-sessions-panel" role="tabpanel" aria-labelledby="project-sessions-tab" tabIndex={0} hidden={activeTab !== 'sessions'}>
           <SectionHeading title="Sessions" count={current.sessions.length} description={`${current.active} active · ${compact(current.tokens)} recorded tokens`} />{current.sessions.length ? <><div className="project-session-grid">{current.sessions.slice(0, sessionLimit).map(session => <SessionCard key={session.id} session={session} mode={mode} onOpen={() => onOpen(session)} />)}</div>{current.sessions.length > sessionLimit && <button className="button secondary show-more" onClick={() => setSessionLimit(sessionLimit + 12)}>Show more sessions ({current.sessions.length - sessionLimit} remaining)</button>}</> : <div className="panel"><EmptyState title="No observed sessions yet" description="When an agent works in this project, its session will appear here." /></div>}
@@ -79,6 +83,10 @@ export function ProjectsPage({ sessions, tasks, mode, onOpen, newTask, editTask,
           <p className="field-help" role="status">{filteredTasks.length} matching of {current.tasks.length} project tasks</p>
           {filteredTasks.length ? <>{filteredTasks.slice(0, taskLimit).map(task => <TaskRow key={task.id} task={task} onToggle={() => toggleTask(task)} onEdit={() => editTask(task)} busy={busyTask === task.id} />)}{filteredTasks.length > taskLimit && <button className="text-button show-more" onClick={() => setTaskLimit(taskLimit + 20)}>Show more tasks ({filteredTasks.length - taskLimit} remaining)</button>}{(taskStatus !== 'all' || taskPriority !== 'all') && <button className="text-button show-more" onClick={resetTaskFilters}>Reset filters</button>}</> : <EmptyState title="No tasks match" description="Choose another status or priority to see this project's tasks." action={<button className="button secondary" onClick={resetTaskFilters}>Reset filters</button>} />}
         </> : <EmptyState title="Give this project a next step" description="Add a task or open a session to create a connected follow-up." action={<button className="button secondary" onClick={() => newTask(current.name === 'Unassigned' ? '' : current.name)}>Add project task</button>} />}
+        </section>
+        <section id="project-activity-panel" role="tabpanel" aria-labelledby="project-activity-tab" tabIndex={0} hidden={activeTab !== 'activity'}>
+          <SectionHeading title="Project activity" count={currentEventCount} description="Retained supported events from this project’s loaded sessions." />
+          <ActivityFeed sessions={current.sessions} onOpen={onOpen} full scopeLabel={`project ${current.name} from currently loaded sessions`} scopeNote={`Only retained events from currently loaded sessions in ${current.name} are included. At most 100 are shown; this is not complete project history.`} />
         </section>
       </div>
     </div> : <section className="panel"><EmptyState title="Project no longer in this workspace" description="Its sessions may be outside the latest scan. Return to the project list to see current work." action={<button className="button secondary" onClick={() => select(null)}>All projects</button>} /></section>}
