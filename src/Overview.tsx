@@ -5,6 +5,7 @@ import { compact, providerLabel, timeAgo, uniqueRuns, type Mode, type Page, type
 import { UsageDashboard } from './Usage';
 import { NetworkOverview } from './NetworkPage';
 import { useObservationClock } from './useObservationClock';
+import { compareTaskPriority } from './task-view';
 
 export function ActivityChart({ sessions, large = false }: { sessions: Session[]; large?: boolean }) {
   const [period, setPeriod] = useState('7d');
@@ -97,8 +98,7 @@ export function Overview({ sessions, tasks, usage, topology, mode, observed, att
   const completed = todaySessions.filter(s => s.status === 'completed').length;
   const tokens = usage?.daily.find(day => day.day === today)?.totalTokens ?? null;
   const projects = new Set(sessions.map(s => s.project));
-  const priority = { high: 0, medium: 1, low: 2 };
-  const topTasks = tasks.filter(t => t.status !== 'done').sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress') || priority[a.priority] - priority[b.priority] || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).slice(0, 4);
+  const topTasks = tasks.filter(t => t.status !== 'done').sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress') || compareTaskPriority(a, b)).slice(0, 4);
   const done = tasks.filter(t => t.status === 'done').length;
   return <>
     <div className="summary-grid">

@@ -16,11 +16,11 @@ User authorization: implement the agreed dashboard backlog in small batches, mai
 | --- | --- | --- | --- |
 | 0 | Preserve and publish existing dashboard resilience, accessible inspection, CSV export, and task-link integrity work | Reviewed; additional incomplete-demo-metadata crash fixed | [PR #1](https://github.com/kasperhbo/agency-dashboard/pull/1); build, 76 backend, 64 browser, 3 staging; scoped coverage 98.07%; additional 3 resilience checks passed |
 | 1 | Guided connection diagnostics in existing Settings | Reviewed; build + 4 focused browser checks passed | [PR #2](https://github.com/kasperhbo/agency-dashboard/pull/2), stacked on PR #1; no native activity claim |
-| 2 | Per-run usage coverage filtering | Implemented and independently reviewed; build + 3 focused browser checks passed | Table-only scope; workspace totals, daily chart, and CSV unchanged |
-| 3 | Task priority filtering and deterministic ordering | Feature Dev implementing | Reuse existing task fields; default stored order; no writes from sorting |
-| 4 | Local task JSON backup download | Frontend Developer implementing | Active source only; load/stale context; no restore claim |
-| 5 | Retained-event inspection | Needs demonstrated gap | Existing detail may already satisfy need |
-| 6 | Workspace-scoped Agents filter/view preferences | Queued after visibility work | Explicit reset and safe storage fallback |
+| 2 | Per-run usage coverage filtering | Reviewed; build + 3 focused browser checks passed | [PR #3](https://github.com/kasperhbo/agency-dashboard/pull/3), stacked on PR #2; aggregate scope unchanged |
+| 3 | Task priority filtering and deterministic ordering | Implemented; independent reviewer recommends APPROVE | 2 focused tests + 9 existing Overview checks passed; combined with backup in next PR due shared page seams |
+| 4 | Local task JSON backup download | Implemented; independent reviewer recommends APPROVE | Build + 5 focused tests passed; accepted task-GET gate, active source only, stale context and no restore claim |
+| 5 | Retained-event timestamp clarity | Senior Developer implementing | Existing list lacks dates/timezone/retention disclosure; preserve log order and disclose derived timestamps |
+| 6 | Workspace-scoped Agents filter/view preferences | Feature Dev preparing | Explicit reset, finite preferences only, no persisted search, safe storage fallback |
 
 Feature definitions and acceptance: [feature proposals](feature-proposals-2026-10-16.md). New work must retain loopback privacy, bounded observation, unknown-value semantics, revision checks, and atomic task persistence.
 
@@ -29,3 +29,5 @@ Feature definitions and acceptance: [feature proposals](feature-proposals-2026-1
 - GitHub connector cannot create PRs (`403 Resource not accessible by integration`); existing noninteractive Git credentials successfully created PR #1 through the GitHub API. Credentials remain in memory and are never logged or committed.
 - A fresh baseline reviewer found that incomplete persisted demo tasks could crash the overview's timestamp sort. The loader now validates revision/timestamps and falls back without overwriting invalid saved data. Regression passed.
 - Combined diagnostics/coverage focused run passed 7 tests after correcting a test-only `innerText`/`textContent` comparison; no production behavior was changed to satisfy that assertion.
+- New independent PR reviewers recommend APPROVE for PRs #1–#3. Their scoped reviews were posted on GitHub as COMMENTED reviews. Formal approval through the app returned 403; the fallback Git credential is the PR author, who cannot self-approve. No formal approval or merge is claimed.
+- Task workflows passed a combined 7-test run; shared task-priority extraction also passed all 9 existing Overview tests. The task backup adds only accepted-GET metadata to the existing hook rather than issuing another fetch. Existing request generation and mode guards are retained.

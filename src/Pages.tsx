@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, Folder, Info, LayoutGrid, Link2, List, LoaderCircle, Plus, RefreshCw, Search, Terminal, Trash2 } from 'lucide-react';
 import { EmptyState, ProviderMark, SectionHeading, SessionCard, StatusBadge } from './components';
 import { ActivityFeed } from './Overview';
+import { taskBackup } from './task-backup';
 import { useObservationClock } from './useObservationClock';
 import { utcTime } from './usage-view';
+import { compareTaskPriority, compareTaskRecent } from './task-view';
 import { compact, providerLabel, taskStatusLabel, timeAgo, type Mode, type Provider, type Session, type Source, type Task, type TaskStatus } from './types';
 
 function connectionSummary(source: Source) {
@@ -28,9 +30,17 @@ export function AgentsPage({ sessions, mode, onOpen }: { sessions: Session[]; mo
 
 export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask, busyTask }: { tasks: Task[]; sessions: Session[]; onOpen: (session: Session) => void; newTask: (status?: TaskStatus) => void; editTask: (task: Task) => void; moveTask: (task: Task, status: TaskStatus) => void; busyTask: string }) {
   const [query, setQuery] = useState(''), [provider, setProvider] = useState('all');
-  const filtered = tasks.filter(t => (provider === 'all' || t.provider === provider) && `${t.title} ${t.project} ${t.description}`.toLowerCase().includes(query.toLowerCase()));
+  const [priority, setPriority] = useState('all'), [sort, setSort] = useState('stored');
+  const filtered = tasks.filter(t => (provider === 'all' || t.provider === provider) && (priority === 'all' || t.priority === priority) && `${t.title} ${t.project} ${t.description}`.toLowerCase().includes(query.toLowerCase()));
+  if (sort !== 'stored') filtered.sort(sort === 'priority' ? compareTaskPriority : compareTaskRecent);
+  const hasFilters = Boolean(query || provider !== 'all' || priority !== 'all');
   return <>
-    <FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Find a task…"><span className="filter-count">{filtered.length} task{filtered.length !== 1 ? 's' : ''}</span></FilterBar>
+    <FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Find a task…">
+      <select aria-label="Task priority" value={priority} onChange={event => setPriority(event.target.value)}><option value="all">All priorities</option><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></select>
+      <select aria-label="Task ordering" value={sort} onChange={event => setSort(event.target.value)}><option value="stored">Stored order</option><option value="priority">Priority: high first</option><option value="recent">Recently updated</option></select>
+      {(hasFilters || sort !== 'stored') && <button className="text-button" onClick={() => { setQuery(''); setProvider('all'); setPriority('all'); setSort('stored'); }}>Reset task filters</button>}
+      <span className="filter-count">{filtered.length} task{filtered.length !== 1 ? 's' : ''}</span>
+    </FilterBar>
     <div className="kanban-board">{(['todo', 'in_progress', 'done'] as TaskStatus[]).map(status => <section className={`kanban-column ${status}`} key={status}>
       <header><span><i />{taskStatusLabel[status]}<b>{filtered.filter(t => t.status === status).length}</b></span><button className="icon-button" aria-label={`Add ${taskStatusLabel[status].toLowerCase()} task`} onClick={() => newTask(status)}><Plus size={17} /></button></header>
       <div className="kanban-tasks">{filtered.filter(t => t.status === status).map(task => {
@@ -42,7 +52,7 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
           {task.sessionId && (linked ? <button className="task-session-link" onClick={() => onOpen(linked)} aria-label={`Open linked session for ${task.title}`}><Link2 size={13} /><span>Linked session</span><ArrowUpRight size={12} /></button> : <span className="task-session-unavailable"><Link2 size={13} />Linked session outside current scan</span>)}
           <div className="kanban-footer"><span><ProviderMark provider={task.provider} small />{providerLabel(task.provider)}</span><label className="status-select"><span className="sr-only">Status of {task.title}</span><select value={task.status} disabled={busyTask === task.id} onChange={e => moveTask(task, e.target.value as TaskStatus)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select>{busyTask === task.id ? <LoaderCircle size={12} className="spin" /> : <ChevronDown size={12} />}</label></div>
         </article>;
-      })}{!filtered.some(t => t.status === status) && <div className="column-empty"><Check size={19} /><span>{query || provider !== 'all' ? 'No matching tasks' : status === 'done' ? 'Good things take small steps.' : 'Room for your next idea.'}</span></div>}<button className="kanban-add" onClick={() => newTask(status)}><Plus size={15} />Add task</button></div>
+      })}{!filtered.some(t => t.status === status) && <div className="column-empty"><Check size={19} /><span>{hasFilters ? 'No matching tasks' : status === 'done' ? 'Good things take small steps.' : 'Room for your next idea.'}</span></div>}<button className="kanban-add" onClick={() => newTask(status)}><Plus size={15} />Add task</button></div>
     </section>)}</div>
     <p className="page-footnote"><Info size={13} />Your board is a plan for your agents. Creating or moving a task does not execute it.</p>
   </>;
@@ -53,15 +63,32 @@ export function ActivityPage({ sessions, onOpen }: { sessions: Session[]; onOpen
   return <><FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search activity…" /><section className="panel activity-page-panel"><SectionHeading title="The story so far" description="Most recent supported events from your agent sessions" /><ActivityFeed sessions={sessions} onOpen={onOpen} full query={query} provider={provider} /></section><p className="page-footnote"><Info size={13} />Up to 100 events displayed. Open a session to see its recent history.</p></>;
 }
 
-export function SettingsPage({ mode, setMode, sources, scannedAt, refreshing, refresh, theme, setTheme, resetDemo, notify }: {
+export function SettingsPage({ mode, setMode, sources, scannedAt, tasks, tasksReadAt, tasksUpdatedAt, taskError, refreshing, refresh, theme, setTheme, resetDemo, notify }: {
   mode: Mode; setMode: (mode: Mode) => void; sources: Source[]; scannedAt: string; refreshing: boolean; refresh: () => void;
   theme: string; setTheme: (theme: string) => void; resetDemo: () => void; notify: (message: string) => void;
+  tasks: Task[]; tasksReadAt: string; tasksUpdatedAt: string; taskError: string;
 }) {
   const [resetConfirm, setResetConfirm] = useState(false);
+  function downloadTasks() {
+    if (mode === 'local' && !tasksReadAt) return;
+    try {
+      const url = URL.createObjectURL(new Blob([taskBackup(tasks, mode, tasksReadAt, tasksUpdatedAt, Boolean(taskError))], { type: 'application/json;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url; link.download = `agency-tasks-${mode}-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { notify('Task download could not be prepared. Try again.'); }
+  }
   const now = useObservationClock(mode === 'local');
   const observation = Date.parse(scannedAt);
   const ageMinutes = Math.max(0, Math.floor((now - observation) / 60000));
   return <div className="settings-layout"><section className="panel settings-section"><SectionHeading title="Your workspace" description="Choose where Agency gets its information." /><div className="source-picker">{(['demo', 'local'] as const).map(value => <button key={value} className={mode === value ? 'selected' : ''} aria-pressed={mode === value} onClick={() => setMode(value)}><span className="source-choice-icon">{value === 'demo' ? <LayoutGrid size={22} /> : <Terminal size={22} />}</span><strong>{value === 'demo' ? 'Demo workspace' : 'Local workspace'}</strong><p>{value === 'demo' ? 'Explore sample agents and try the task board. Tasks stay in this browser.' : 'Discover your Claude and Codex sessions. Tasks stay on this computer.'}</p><span className="radio-dot" /></button>)}</div><p className="info-note">Local discovery reads session metadata from this computer. Your logs stay on this computer. Agency never modifies native agent files or installs hooks.</p></section>
+    <section className="panel settings-section" aria-label="Task backup">
+      <SectionHeading title="Download task backup" description={mode === 'demo' ? 'Demo tasks from this browser only.' : 'Last confirmed local task state held in this browser.'} />
+      <p className="info-note">The JSON download contains task titles, descriptions, project labels, and session references. It excludes unconfirmed writes. This browser snapshot is not an atomic disk backup; no import or restore is provided.</p>
+      {mode === 'local' && <p className="info-note">{tasksReadAt ? <>Last successful task read: <time dateTime={tasksReadAt}>{new Date(tasksReadAt).toLocaleString()}</time>. Last confirmed update: <time dateTime={tasksUpdatedAt}>{new Date(tasksUpdatedAt).toLocaleString()}</time>. {taskError ? 'Task refresh failed; the retained snapshot is stale.' : 'The snapshot may exclude changes made after the last confirmed update.'}</> : 'Tasks have not been successfully read. Check connections before downloading.'}</p>}
+      <button type="button" className="button secondary" disabled={mode === 'local' && !tasksReadAt} onClick={downloadTasks}>Download task JSON</button>
+    </section>
     <section className="panel settings-section" aria-label="Agent connections">
       <SectionHeading title="Agent connections" description="No API keys. Just your local session logs." action={<button className="button secondary small-button" disabled={refreshing || mode !== 'local'} onClick={refresh}><RefreshCw size={14} className={refreshing ? 'spin' : ''} />{refreshing ? 'Checking…' : 'Check connections'}</button>} />
       {mode === 'demo' ? <p className="info-note">Demo workspace uses sample sessions. Select Local workspace above to inspect this server's source paths and connection observations.</p> : <>
