@@ -18,7 +18,7 @@ function initialDemoTasks(): Task[] {
   try {
     const stored = JSON.parse(readPreference('demoTasks', 'null'));
     if (!Array.isArray(stored)) return demoTasks;
-    if (stored.every(t => typeof t.id === 'string' && typeof t.title === 'string' && ['claude', 'codex'].includes(t.provider) && ['todo', 'in_progress', 'done'].includes(t.status) && ['low', 'medium', 'high'].includes(t.priority) && typeof t.project === 'string' && typeof t.description === 'string' && (t.sessionId == null || (typeof t.sessionId === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(t.sessionId))))) return stored;
+    if (stored.every(t => t && typeof t.id === 'string' && typeof t.title === 'string' && ['claude', 'codex'].includes(t.provider) && ['todo', 'in_progress', 'done'].includes(t.status) && ['low', 'medium', 'high'].includes(t.priority) && typeof t.project === 'string' && typeof t.description === 'string' && Number.isInteger(t.revision) && t.revision >= 1 && typeof t.createdAt === 'string' && Number.isFinite(Date.parse(t.createdAt)) && typeof t.updatedAt === 'string' && Number.isFinite(Date.parse(t.updatedAt)) && (t.sessionId == null || (typeof t.sessionId === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(t.sessionId))))) return stored;
   } catch { /* Retain usable seed data if browser storage is malformed. */ }
   return demoTasks;
 }

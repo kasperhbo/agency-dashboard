@@ -1,5 +1,18 @@
 import { test, expect } from '@playwright/test';
 
+test('incomplete saved demo tasks cannot trap the overview in render recovery', async ({ page }) => {
+  const saved = JSON.stringify(['First incomplete task', 'Second incomplete task'].map((title, index) => ({
+    id: `incomplete-${index}`, title, description: '', project: 'Recovery',
+    provider: 'claude', status: 'todo', priority: 'medium',
+  })));
+  await page.addInitScript(value => localStorage.setItem('agency.demoTasks', value), saved);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Your agents, in sync.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agency couldn’t display this workspace.' })).toHaveCount(0);
+  // Invalid persisted input is left untouched so it can still be recovered manually.
+  expect(await page.evaluate(() => localStorage.getItem('agency.demoTasks'))).toBe(saved);
+});
+
 test('system appearance follows OS changes and explicit overrides survive reload', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/#settings');
