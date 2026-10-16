@@ -262,6 +262,38 @@ test('Codex native spawn metadata supplies lineage and the actual agent label', 
   assert.equal(role.name, 'explorer');
 });
 
+test('Codex inherited session metadata cannot replace spawned child identity or collapse siblings', () => {
+  const root = parse('codex', '/logs/parent.jsonl', [
+    { type: 'session_meta', payload: { id: 'parent', cwd: '/work/project' } },
+  ]);
+  const child = (id, name) => parse('codex', `/logs/${id}.jsonl`, [
+    { type: 'session_meta', payload: { id, cwd: '/work/project', agent_nickname: name, source: { subagent: { thread_spawn: { parent_thread_id: 'parent' } } } } },
+    // Current Codex logs may append inherited editor/session metadata after the
+    // child's own spawn record. It describes ancestry, not a new child identity.
+    { type: 'session_meta', payload: { id: 'parent', cwd: '/work/project', source: 'vscode' } },
+  ]);
+  const first = child('child-one', 'Review worker');
+  const second = child('child-two', 'Test worker');
+  assert.equal(first.nativeId, 'child-one');
+  assert.equal(second.nativeId, 'child-two');
+  assert.equal(first.parentNativeId, 'parent');
+  assert.equal(second.parentNativeId, 'parent');
+
+  const graph = build(snapshot([root, first, second]));
+  const childNodes = graph.nodes.filter(node => node.kind === 'subagent');
+  const parent = graph.nodes.find(node => node.nativeId === 'parent' && node.kind === 'session');
+  assert.equal(childNodes.length, 2);
+  assert.equal(graph.summary.duplicatesMerged, 0);
+  assert.deepEqual(graph.edges.filter(edge => edge.kind === 'parent-child').map(edge => [edge.source, edge.target]).sort(), childNodes.map(node => [parent.id, node.id]).sort());
+
+  const inheritedFirst = parse('codex', '/logs/inherited-first.jsonl', [
+    { type: 'session_meta', payload: { id: 'parent', cwd: '/work/project', source: 'vscode' } },
+    { type: 'session_meta', payload: { id: 'inherited-child', cwd: '/work/project', source: { subagent: { thread_spawn: { parent_thread_id: 'parent' } } } } },
+  ]);
+  assert.equal(inheritedFirst.nativeId, 'inherited-child');
+  assert.equal(inheritedFirst.parentNativeId, 'parent');
+});
+
 test('Codex forks, arbitrary payload fields, prompts and malformed metadata cannot create spawn edges', () => {
   for (const extra of [
     { forked_from_id: 'parent', parent_thread_id: 'parent', source: 'cli' },

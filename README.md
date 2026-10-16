@@ -40,10 +40,13 @@ Open **http://127.0.0.1:4318**. Fonts and assets are bundled locally. No API key
 - **Run coverage** filters the usage table to complete, partial, or unavailable logs without changing workspace totals, the daily chart, or CSV scope. Dated periods continue to exclude runs without dated usage; missing usage is unavailable rather than zero.
 - Global search with **Ctrl/Cmd K**, **N** for a new task, and **Esc** to close dialogs.
 - Dark/light/system appearance with live system updates, mobile navigation, focus-contained dialogs, and reduced-motion support.
+- Agent filters remember provider, status, and grid/list choice separately for Demo and Local workspaces. Search stays transient. Reset filters remains available when a saved filter has no matches.
 - A recovery screen offers a reload after an unexpected rendering error, preserving saved tasks and preferences.
 - Demo tasks persist in browser storage; local tasks persist on disk, with revision checks for concurrent edits.
 
 The dashboard observes agents and organizes work. Tasks do not start agents. It does not intercept approvals, run terminal commands, or modify agent logs or hook configuration.
+
+Session details show supported event timestamps in full UTC date and time. Event rows preserve parser display order: the current parser retains up to 35 supported events and presents them in reverse source-log order. Some missing event times use a preceding record or the file modification time; this history does not establish a complete lifecycle or timestamp-sorted sequence.
 
 ## Projects and session links
 

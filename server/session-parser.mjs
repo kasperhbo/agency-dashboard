@@ -86,18 +86,20 @@ export class SessionParser {
     } else {
       const p = record.payload || {};
       if (record.type === 'session_meta') {
-        this.recognized = true; this.nativeId = metadataText(p.id); this.cwd = p.cwd || this.cwd;
+        this.recognized = true; this.cwd = p.cwd || this.cwd;
         // Only native spawn metadata establishes lineage. forked_from_id and generic
         // parent_thread_id may describe a fork, so neither alone implies a spawn.
         const spawn = p.source?.subagent?.thread_spawn;
         if (spawn && typeof spawn === 'object' && !Array.isArray(spawn)) {
+          this.nativeId = metadataText(p.id) || this.nativeId;
           this.subagent = true;
           this.parentNativeId = metadataText(spawn.parent_thread_id);
           this.agentName = metadataText(p.agent_nickname) || metadataText(spawn.agent_nickname) || metadataText(p.agent_role) || metadataText(spawn.agent_role);
         } else if (p.source?.subagent) {
+          this.nativeId ||= metadataText(p.id);
           this.subagent = true;
           this.agentName = metadataText(p.agent_nickname) || metadataText(p.agent_role) || metadataText(p.source.subagent);
-        }
+        } else this.nativeId ||= metadataText(p.id);
       }
       if (record.type === 'turn_context') { this.cwd = p.cwd || this.cwd; if (p.model) this.model = short(p.model, 80); }
       if (record.type === 'token_usage_record') this.codexUsage(p.thread_token_usage, p.usage, usageTime);
