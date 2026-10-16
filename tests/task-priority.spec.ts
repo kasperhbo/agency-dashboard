@@ -16,6 +16,16 @@ test('task comparators preserve input and deterministically resolve priority, re
   expect(tasks).toEqual(original);
 });
 
+test('task ordering compares UTC instants across offsets and treats equivalent timestamps as ties', () => {
+  const earlier = task('earlier', 'high', { createdAt: '2026-01-01T10:00:00+02:00', updatedAt: '2026-01-01T10:00:00+02:00' });
+  const later = task('later', 'high', { createdAt: '2026-01-01T09:00:00Z', updatedAt: '2026-01-01T09:00:00Z' });
+  expect([later, earlier].sort(compareTaskPriority).map(value => value.id)).toEqual(['earlier', 'later']);
+  expect([earlier, later].sort(compareTaskRecent).map(value => value.id)).toEqual(['later', 'earlier']);
+  const sameInstant = task('a', 'high', { createdAt: '2026-01-01T08:00:00Z', updatedAt: '2026-01-01T08:00:00Z' });
+  expect([earlier, sameInstant].sort(compareTaskPriority).map(value => value.id)).toEqual(['a', 'earlier']);
+  expect([earlier, sameInstant].sort(compareTaskRecent).map(value => value.id)).toEqual(['a', 'earlier']);
+});
+
 test('board preserves stored order, composes filters, sorts within columns and resets without writing', async ({ page }) => {
   let mutations = 0;
   await page.addInitScript(() => localStorage.setItem('agency.mode', 'local'));

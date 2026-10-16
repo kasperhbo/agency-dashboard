@@ -62,7 +62,7 @@ test('agent filtering, status tabs, list view, and empty results work', async ({
   await page.getByRole('textbox', { name: 'Search agents, sessions, projects…' }).fill('not-a-session');
   await expect(page.getByRole('heading', { name: 'No sessions match' })).toBeVisible();
   await page.getByRole('button', { name: 'Reset filters' }).click();
-  await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(27);
+  await expect(page.locator('.all-agents-grid .session-card')).toHaveCount(27);
 });
 
 test('local source discovery and tasks work with independent fixture data', async ({ page }) => {

@@ -117,7 +117,7 @@ export function useWorkspace() {
         const result = await request<Task>(task ? `/api/tasks/${task.id}` : '/api/tasks', { method: task ? 'PATCH' : 'POST', body: JSON.stringify({ ...input, revision: task?.revision }), signal: controller.signal });
         if (!controller.signal.aborted && scope.current === currentScope) {
           setLocalTasks(tasks => task ? tasks.map(t => t.id === task.id ? result : t) : [result, ...tasks]);
-          setTaskError(''); setTasksUpdatedAt(new Date().toISOString());
+          setTasksUpdatedAt(new Date().toISOString());
         }
       } finally { mutations.current.delete(controller); if (scope.current === currentScope) taskGeneration.current++; }
     }
@@ -131,7 +131,7 @@ export function useWorkspace() {
         await request(`/api/tasks/${task.id}`, { method: 'DELETE', body: JSON.stringify({ revision: task.revision }), signal: controller.signal });
         if (!controller.signal.aborted && scope.current === currentScope) {
           setLocalTasks(tasks => tasks.filter(t => t.id !== task.id));
-          setTaskError(''); setTasksUpdatedAt(new Date().toISOString());
+          setTasksUpdatedAt(new Date().toISOString());
         }
       } finally { mutations.current.delete(controller); if (scope.current === currentScope) taskGeneration.current++; }
     }

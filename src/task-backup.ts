@@ -1,7 +1,7 @@
 import type { Mode, Task } from './types';
 
 export function taskBackup(tasks: Task[], source: Mode, lastSuccessfulReadAt: string, lastConfirmedUpdateAt: string, readFailed: boolean, now = Date.now()) {
-  const observed = Date.parse(lastConfirmedUpdateAt);
+  const observed = Date.parse(lastSuccessfulReadAt);
   return JSON.stringify({
     schemaVersion: 1,
     source,

@@ -28,7 +28,7 @@ test('network reads the real topology API and exposes recorded parent-child conn
   await inspector.getByRole('button', { name: 'Design coordinator', exact: true }).click();
   await expect(inspector.getByText('2 connected subagents')).toBeVisible();
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
-  await expect(page.getByRole('status', { name: 'Graph zoom' })).toHaveText('90%');
+  await expect(page.getByRole('status', { name: 'Graph zoom' })).toHaveText('110%');
   await page.getByRole('button', { name: 'Pause graph animation' }).click();
   await expect(page.locator('.network-viewport')).toHaveClass(/motion-paused/);
   await page.getByRole('button', { name: 'Resume graph animation' }).click();

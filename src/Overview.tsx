@@ -32,7 +32,7 @@ export function ActivityChart({ sessions, large = false }: { sessions: Session[]
         start = new Date(end.getTime() - 7200000);
       }
       return {
-        key: period === '7d' ? start.toISOString() : `hour:${Math.floor(end.getTime() / 7200000)}`,
+        key: period === '7d' ? start.toISOString() : `${start.toISOString()}/${end.toISOString()}`,
         label: period === '7d' ? start.toLocaleDateString('en', { weekday: 'short' }) : end.toLocaleTimeString('en', { hour: 'numeric', hour12: false }),
         fullLabel: period === '7d' ? `${start.toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' })} · ${timeZone}` : `${rangeFormat.format(start)} – ${rangeFormat.format(end)} · ${timeZone}`,
         start, end, claude: 0, codex: 0,
@@ -50,7 +50,7 @@ export function ActivityChart({ sessions, large = false }: { sessions: Session[]
     if (selectedKey && !keys.split(',').includes(selectedKey)) {
       setSelectedKey(null);
       setHoveredKey(null);
-      setNotice('The selected date is outside the current chart window. Selection cleared.');
+      setNotice('The selected date or time interval changed with the chart window. Selection cleared.');
     }
   }, [keys, selectedKey]);
   const selected = buckets.find(bucket => bucket.key === (hoveredKey || selectedKey));

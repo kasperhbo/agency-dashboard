@@ -75,6 +75,8 @@ export function NetworkPage({ mode, sessions, onOpen }: { mode: Mode; sessions: 
   const [view, setView] = useState<'graph' | 'list'>(() => window.matchMedia('(max-width: 620px) and (orientation: portrait)').matches ? 'list' : 'graph');
   const [familyLimit, setFamilyLimit] = useState(2), [expanded, setExpanded] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null), [zoom, setZoom] = useState(.8);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [locateRequest, setLocateRequest] = useState<string | null>(null);
   const [paused, setPaused] = useState(false), [touchInspect, setTouchInspect] = useState(false);
   const now = useObservationClock();
   const initialFit = useRef(false);
@@ -88,9 +90,9 @@ export function NetworkPage({ mode, sessions, onOpen }: { mode: Mode; sessions: 
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
-  useEffect(() => { setSelectedId(null); setExpanded([]); setFamilyLimit(2); setProvider('all'); setProject('all'); setFolder('all'); setQuery(''); setTouchInspect(false); initialFit.current = false; }, [mode]);
+  useEffect(() => { setSelectedId(null); setExpanded([]); setFamilyLimit(2); setProvider('all'); setProject('all'); setFolder('all'); setQuery(''); setTouchInspect(false); setFocusId(null); setLocateRequest(null); initialFit.current = false; }, [mode]);
   useEffect(() => { if (selectedId && graph && !graph.nodes.some(node => node.id === selectedId)) setSelectedId(null); }, [graph, selectedId]);
-  const layout = useMemo(() => graph ? layoutTopology(graph, { query, provider, project, folder, activeOnly, familyLimit, expanded }) : null, [graph, query, provider, project, folder, activeOnly, familyLimit, expanded]);
+  const layout = useMemo(() => graph ? layoutTopology(graph, { query, provider, project, folder, activeOnly, familyLimit, expanded, focusId }) : null, [graph, query, provider, project, folder, activeOnly, familyLimit, expanded, focusId]);
   const selected = graph?.nodes.find(node => node.id === selectedId);
   const parentEdge = graph?.edges.find(edge => edge.kind === 'parent-child' && edge.target === selectedId);
   const parent = graph?.nodes.find(node => node.id === parentEdge?.source);
@@ -100,6 +102,30 @@ export function NetworkPage({ mode, sessions, onOpen }: { mode: Mode; sessions: 
   const motionPaused = paused || reduced || !!error || !!stale;
   const projects = [...new Set(graph?.nodes.map(node => node.project).filter((project): project is string => !!project) || [])].sort();
   const folders = graph?.nodes.filter(node => node.kind === 'folder') || [];
+  function locate(id: string) {
+    setSelectedId(id); setFocusId(id); setLocateRequest(id); setView('graph');
+    initialFit.current = true;
+    setZoom(1);
+  }
+  useEffect(() => {
+    if (!locateRequest || view !== 'graph' || !layout || !viewport.current) return;
+    const target = layout.nodes.find(node => node.id === locateRequest);
+    if (target) {
+      const canvas = viewport.current;
+      canvas.scrollTo({ left: Math.max(0, (target.x + target.width / 2) * zoom - canvas.clientWidth / 2), top: Math.max(0, (target.y + target.height / 2) * zoom - canvas.clientHeight / 2) });
+      nodeRefs.current.get(target.id)?.focus({ preventScroll: true });
+      canvas.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    }
+    setLocateRequest(null);
+  }, [layout, locateRequest, view, zoom]);
+  function changeZoom(next: number) {
+    const canvas = viewport.current;
+    if (!canvas) return;
+    const centerX = (canvas.scrollLeft + canvas.clientWidth / 2) / zoom;
+    const centerY = (canvas.scrollTop + canvas.clientHeight / 2) / zoom;
+    setZoom(next);
+    requestAnimationFrame(() => canvas.scrollTo({ left: centerX * next - canvas.clientWidth / 2, top: centerY * next - canvas.clientHeight / 2 }));
+  }
   function fit() {
     if (layout && viewport.current) {
       setZoom(Math.max(.1, Math.min(1, (viewport.current.clientWidth - 28) / layout.width, (viewport.current.clientHeight - 28) / layout.height)));
@@ -142,7 +168,7 @@ export function NetworkPage({ mode, sessions, onOpen }: { mode: Mode; sessions: 
     if (target) { nodeRefs.current.get(target)?.focus(); setSelectedId(target); }
   }
   function reset() {
-    clearFilters(); setSelectedId(null);
+    clearFilters(); setSelectedId(null); setFocusId(null); setLocateRequest(null);
     // Refit after the cleared filters produce the next layout, or when graph view returns.
     initialFit.current = false;
     viewport.current?.scrollTo({ left: 0, top: 0 });
@@ -173,7 +199,7 @@ export function NetworkPage({ mode, sessions, onOpen }: { mode: Mode; sessions: 
       <div className="network-layout"><section className="panel network-canvas-panel" data-view={view}><div className="network-canvas-toolbar"><div className="view-switch" aria-label="Network view"><button aria-label="Graph view" aria-pressed={view === 'graph'} onClick={() => setView('graph')}><Network size={16} /></button><button aria-label="Hierarchy list view" aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={16} /></button></div><span className="network-visible-count">{layout.visibleRuns} of {layout.matchingRuns} matching nodes</span><button className="icon-button" aria-label={motionPaused ? 'Resume graph animation' : 'Pause graph animation'} aria-pressed={!motionPaused} disabled={reduced || !!error || !!stale} onClick={() => setPaused(!paused)}>{motionPaused ? <Play size={15} /> : <Pause size={15} />}</button><button className="icon-button" aria-label="Reset network view" onClick={reset}><RefreshCw size={15} /></button></div>
       {view === 'graph' ? <div id="network-evidence-view" className={`network-viewport ${motionPaused ? 'motion-paused' : ''} ${touchInspect ? 'touch-inspection' : ''}`} role="region" aria-label="Agent relationship graph" tabIndex={0} ref={viewport} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={() => { dragging.current = null; }} onPointerCancel={() => { dragging.current = null; }}>
         <div className="network-zoom-space" style={{ width: layout.width * zoom, height: layout.height * zoom }}><div className="network-stage" style={{ width: layout.width, height: layout.height, transform: `scale(${zoom})` }}>
-          <svg className="network-connections" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(edge => <path key={edge.id} data-edge-kind={edge.kind} className={`network-edge ${edge.kind} ${edge.animated ? 'is-active' : ''} ${selectedId ? neighbors.has(edge.source) && neighbors.has(edge.target) ? 'is-highlighted' : 'is-muted' : ''}`} d={edge.path} />)}</svg>
+          <svg className="network-connections" width={layout.width} height={layout.height} aria-hidden="true"><defs><marker id="network-child-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="context-stroke" strokeWidth="1.7" /></marker></defs>{layout.edges.map(edge => <path key={edge.id} data-edge-kind={edge.kind} data-edge-source={edge.source} data-edge-target={edge.target} markerEnd={edge.kind === 'parent-child' ? 'url(#network-child-arrow)' : undefined} className={`network-edge ${edge.kind} ${edge.evidence === 'missing-parent' ? 'unresolved' : ''} ${edge.animated ? 'is-active' : ''} ${selectedId ? neighbors.has(edge.source) && neighbors.has(edge.target) ? 'is-highlighted' : 'is-muted' : ''}`} d={edge.path} />)}</svg>
           {layout.nodes.map(node => {
             const incoming = graph.edges.find(edge => edge.kind === 'parent-child' && edge.target === node.id);
             const nodeParent = graph.nodes.find(item => item.id === incoming?.source);
@@ -188,18 +214,19 @@ export function NetworkPage({ mode, sessions, onOpen }: { mode: Mode; sessions: 
         const label = graph.nodes.find(item => item.id === incoming?.source)?.label;
         return <div role="listitem" key={node.id}><button className="network-list-item" onClick={() => setSelectedId(node.id)} aria-pressed={selectedId === node.id}>{nodeIcon(node)}<span><strong>{node.label}</strong><small>{kindLabel(node)}{label ? ` · Parent: ${label}` : ' · No recorded parent'}</small></span>{node.status && <StatusBadge status={node.status} />}<ArrowRight size={14} /></button></div>;
       })}</div>}
+      <div className="network-edge-key" aria-label="Relationship key"><span><i className="guide-line" />{folders.length ? 'Folder membership · not parentage' : 'Provider membership · not parentage'}</span><span><i className="guide-line lineage" />Recorded parent → child</span><span><i className="guide-line unresolved" />Parent outside scan</span></div>
       {layout.matchingRuns === 0 && <div className="network-empty"><HelpCircle size={19} /><strong>{graph.summary.sessions || graph.summary.subagents ? 'No agents match these filters' : 'No agent runs observed yet'}</strong><span>{graph.summary.sessions || graph.summary.subagents ? 'Clear a filter or search to see your team again.' : 'Start Claude Code or Codex locally, then refresh. Source availability is not a live agent connection.'}</span><button className="text-button" onClick={reset}>Reset filters</button></div>}
-      {view === "graph" && <div className="network-canvas-footer">{view === 'graph' && <button className="text-button network-touch-inspect" aria-label="Inspect graph with touch" aria-pressed={touchInspect} onClick={() => setTouchInspect(!touchInspect)}>{touchInspect ? 'Finish touch inspection' : 'Inspect graph'}</button>}<span>{reduced ? 'Reduced motion enabled' : motionPaused ? 'Animation paused' : 'Animating reported working paths'}<i /><span className="network-mouse-hint">Drag or scroll to pan</span><span className="network-touch-hint">{touchInspect ? 'Drag to inspect · turn off to scroll page' : 'Scroll page · enable touch inspection to pan'}</span></span><div><button className="icon-button" aria-label="Zoom out" disabled={zoom <= .1} onClick={() => setZoom(Math.max(.1, +(zoom - .1).toFixed(2)))}><Minus size={14} /></button><output aria-label="Graph zoom">{Math.round(zoom * 100)}%</output><button className="icon-button" aria-label="Zoom in" disabled={zoom >= 1.5} onClick={() => setZoom(Math.min(1.5, +(zoom + .1).toFixed(2)))}><Plus size={14} /></button><button className="icon-button" aria-label="Fit graph to viewport" onClick={fit}><Maximize2 size={14} /></button></div></div>}
+      {view === "graph" && <div className="network-canvas-footer">{view === 'graph' && <button className="text-button network-touch-inspect" aria-label="Inspect graph with touch" aria-pressed={touchInspect} onClick={() => setTouchInspect(!touchInspect)}>{touchInspect ? 'Finish touch inspection' : 'Inspect graph'}</button>}<span>{reduced ? 'Reduced motion enabled' : motionPaused ? 'Animation paused' : 'Animating reported working paths'}<i /><span className="network-mouse-hint">Drag or scroll to pan</span><span className="network-touch-hint">{touchInspect ? 'Drag to inspect · turn off to scroll page' : 'Scroll page · enable touch inspection to pan'}</span></span><div><button className="icon-button" aria-label="Zoom out" disabled={zoom <= .1} onClick={() => changeZoom(Math.max(.1, +(zoom - .1).toFixed(2)))}><Minus size={14} /></button><output aria-label="Graph zoom">{Math.round(zoom * 100)}%</output><button className="icon-button" aria-label="Zoom in" disabled={zoom >= 1.5} onClick={() => changeZoom(Math.min(1.5, +(zoom + .1).toFixed(2)))}><Plus size={14} /></button><button className="icon-button" aria-label="Fit graph to viewport" onClick={fit}><Maximize2 size={14} /></button></div></div>}
       {layout.hiddenCount > 0 && <div className="network-hidden"><span>{layout.hiddenCount} matching nodes are collapsed to keep the map readable.</span>{layout.hiddenFamilies > 0 && <button className="text-button" onClick={() => setFamilyLimit(familyLimit + 2)}><Expand size={13} />Show more families</button>}</div>}
       </section><aside className="network-inspector panel" aria-label="Agent inspector"><header><span>{selected ? kindLabel(selected) : 'The shape of your team'}</span>{selected && <button className="icon-button" aria-label="Clear selected agent" onClick={() => setSelectedId(null)}><X size={15} /></button>}</header>{selected ? <>
-        <div className="network-inspector-symbol">{nodeIcon(selected)}</div><h2>{selected.label}</h2>{selected.status && <StatusBadge status={selected.status} />}
+        <div className="network-inspector-symbol">{nodeIcon(selected)}</div><h2>{selected.label}</h2>{selected.status && <StatusBadge status={selected.status} />}<button className="button secondary network-locate" onClick={() => locate(selected.id)}><Maximize2 size={14} />Locate in graph</button>{!layout.nodes.some(node => node.id === selected.id) && focusId === selected.id && <p className="info-note">Selected agent is outside the current filters. Clear filters to reveal it.</p>}
         <dl><div><dt>Provider</dt><dd>{selected.provider ? providerLabel(selected.provider) : selected.kind === 'folder' ? 'Folder' : 'Workspace'}</dd></div>{selected.kind === 'provider' && <div><dt>Source availability</dt><dd>{selected.availability === 'connected' ? 'Logs available' : 'Not available'}</dd></div>}{selected.workingDirectory && <div><dt>Working folder</dt><dd>{selected.workingDirectory}</dd></div>}{selected.project && <div><dt>Project</dt><dd>{selected.project}</dd></div>}{selected.model && <div><dt>Last observed model</dt><dd>{shortModel(selected.model)}</dd></div>}{selected.tokens !== undefined && <div><dt>Recorded tokens</dt><dd>{selected.tokens === null ? 'Not reported' : selected.tokens.toLocaleString()}</dd></div>}{selected.updatedAt && <div><dt>Last log timestamp</dt><dd>{timeAgo(selected.updatedAt)}</dd></div>}</dl>
-        {parent && <div className="network-parent-info"><span>Reported parent</span><button onClick={() => setSelectedId(parent.id)}>{parent.label}<ArrowRight size={13} /></button><small>{parentEdge?.evidence === 'path-parent' ? 'Correlated from native log folder structure' : parent.kind === 'missing-parent' ? 'Native parent reference; parent is outside this scan' : 'Native parent reference in log metadata'}</small></div>}
-        {children.length > 0 && <div className="network-children"><h3>{children.length} connected subagent{children.length === 1 ? '' : 's'}</h3>{children.map(child => <button key={child.id} onClick={() => setSelectedId(child.id)}><GitBranch size={13} /><span>{child.label}</span><ArrowRight size={12} /></button>)}</div>}
+        {parent && <div className="network-parent-info"><span>Reported parent</span><button onClick={() => locate(parent.id)}>{parent.label}<ArrowRight size={13} /></button><small>{parentEdge?.evidence === 'path-parent' ? 'Correlated from native log folder structure' : parent.kind === 'missing-parent' ? 'Native parent reference; parent is outside this scan' : 'Native parent reference in log metadata'}</small></div>}
+        {children.length > 0 && <div className="network-children"><h3>{children.length} connected subagent{children.length === 1 ? '' : 's'}</h3>{children.map(child => <button key={child.id} onClick={() => locate(child.id)}><GitBranch size={13} /><span>{child.label}</span><ArrowRight size={12} /></button>)}</div>}
         {selected.kind === 'missing-parent' && <p className="warning-note">This is a reference, not an observed agent. The parent may be outside the scan limit or its log may no longer be available.</p>}
         {selected.sessionId && sessions.some(session => session.id === selected.sessionId) && <button className="button secondary network-open-session" onClick={() => onOpen(sessions.find(session => session.id === selected.sessionId)!)}>Open session details <ArrowRight size={14} /></button>}
         {selected.nativeId && <div className="network-native-id"><span>Native ID</span><code>{selected.nativeId}</code></div>}
-      </> : <><span className="network-inspector-hero"><GitBranch size={32} /></span><h2>One workspace.<br />A connected team.</h2><p>Select an agent to inspect its parent, subagents, activity, and usage.</p><div className="network-guide"><span><i className="guide-line" />Provider membership</span><span><i className="guide-line lineage" />Recorded parent → child</span><span><i className="guide-line unresolved" />Parent outside scan</span><span><i className="green-dot" />Recent working activity</span></div><p className="info-note">Source logs being available does not mean an agent is currently connected or running. Activity is inferred from recent logs.</p></>}
+      </> : <><span className="network-inspector-hero"><GitBranch size={32} /></span><h2>One workspace.<br />A connected team.</h2><p>Select an agent to inspect its parent, subagents, activity, and usage.</p><div className="network-guide"><span><i className="guide-line" />{folders.length ? 'Folder membership · not parentage' : 'Provider membership · not parentage'}</span><span><i className="guide-line lineage" />Recorded parent → child</span><span><i className="guide-line unresolved" />Parent outside scan</span><span><i className="green-dot" />Recent working activity</span></div><p className="info-note">Source logs being available does not mean an agent is currently connected or running. Activity is inferred from recent logs.</p></>}
       </aside></div>
       <div className="network-evidence"><ShieldCheck size={15} /><span>{graph.dataSource === 'demo' ? 'Sample relationships for exploration. No agents are started from this view.' : `${graph.summary.duplicatesMerged} duplicate logs merged. Links come from native metadata; project membership never implies an agent-to-agent connection.`}</span></div>
       {graph.coverage.notes.length > 0 && <details className="network-coverage"><summary>Data coverage & relationship notes ({graph.coverage.notes.length})</summary><ul>{graph.coverage.notes.map(note => <li key={note}>{note}</li>)}</ul></details>}
