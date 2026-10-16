@@ -285,6 +285,13 @@ test('Codex inherited session metadata cannot replace spawned child identity or 
   assert.equal(childNodes.length, 2);
   assert.equal(graph.summary.duplicatesMerged, 0);
   assert.deepEqual(graph.edges.filter(edge => edge.kind === 'parent-child').map(edge => [edge.source, edge.target]).sort(), childNodes.map(node => [parent.id, node.id]).sort());
+
+  const inheritedFirst = parse('codex', '/logs/inherited-first.jsonl', [
+    { type: 'session_meta', payload: { id: 'parent', cwd: '/work/project', source: 'vscode' } },
+    { type: 'session_meta', payload: { id: 'inherited-child', cwd: '/work/project', source: { subagent: { thread_spawn: { parent_thread_id: 'parent' } } } } },
+  ]);
+  assert.equal(inheritedFirst.nativeId, 'inherited-child');
+  assert.equal(inheritedFirst.parentNativeId, 'parent');
 });
 
 test('Codex forks, arbitrary payload fields, prompts and malformed metadata cannot create spawn edges', () => {
