@@ -86,7 +86,7 @@ export class SessionParser {
     } else {
       const p = record.payload || {};
       if (record.type === 'session_meta') {
-        this.recognized = true; this.nativeId = metadataText(p.id); this.cwd = p.cwd || this.cwd;
+        this.recognized = true; this.nativeId ||= metadataText(p.id); this.cwd = p.cwd || this.cwd;
         // Only native spawn metadata establishes lineage. forked_from_id and generic
         // parent_thread_id may describe a fork, so neither alone implies a spawn.
         const spawn = p.source?.subagent?.thread_spawn;

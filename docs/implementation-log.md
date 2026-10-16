@@ -19,8 +19,9 @@ User authorization: implement the agreed dashboard backlog in small batches, mai
 | 2 | Per-run usage coverage filtering | Reviewed; build + 3 focused browser checks passed | [PR #3](https://github.com/kasperhbo/agency-dashboard/pull/3), stacked on PR #2; aggregate scope unchanged |
 | 3 | Task priority filtering and deterministic ordering | Implemented; independent reviewer recommends APPROVE | 2 focused tests + 9 existing Overview checks passed; combined with backup in next PR due shared page seams |
 | 4 | Local task JSON backup download | Implemented; independent reviewer recommends APPROVE | Build + 5 focused tests passed; accepted task-GET gate, active source only, stale context and no restore claim |
-| 5 | Retained-event timestamp clarity | Senior Developer implementing | Existing list lacks dates/timezone/retention disclosure; preserve log order and disclose derived timestamps |
-| 6 | Workspace-scoped Agents filter/view preferences | Feature Dev preparing | Explicit reset, finite preferences only, no persisted search, safe storage fallback |
+| 5 | Retained-event timestamp clarity | Implemented; independent reviewer recommends APPROVE | Full UTC timestamps, invalid/missing safety, reverse source-order and 35-event/fallback disclosure |
+| 6 | Workspace-scoped Agents filter/view preferences | Implemented; independent reviewer recommends APPROVE | Provider/status/view scoped by workspace; search stays transient; nested malformed JSON safe |
+| Graph correction | Codex child identity and graph connection fix | Root implemented parser identity fix; visualization improvements underway | Inherited `session_meta` overwrote child ID after spawn, collapsing siblings and making parent links ambiguous |
 
 Feature definitions and acceptance: [feature proposals](feature-proposals-2026-10-16.md). New work must retain loopback privacy, bounded observation, unknown-value semantics, revision checks, and atomic task persistence.
 
@@ -31,3 +32,4 @@ Feature definitions and acceptance: [feature proposals](feature-proposals-2026-1
 - Combined diagnostics/coverage focused run passed 7 tests after correcting a test-only `innerText`/`textContent` comparison; no production behavior was changed to satisfy that assertion.
 - New independent PR reviewers recommend APPROVE for PRs #1–#3. Their scoped reviews were posted on GitHub as COMMENTED reviews. Formal approval through the app returned 403; the fallback Git credential is the PR author, who cannot self-approve. No formal approval or merge is claimed.
 - Task workflows passed a combined 7-test run; shared task-priority extraction also passed all 9 existing Overview tests. The task backup adds only accepted-GET metadata to the existing hook rather than issuing another fetch. Existing request generation and mode guards are retained.
+- Graph bug confirmed by sanitized metadata audit: Codex child logs can contain their own spawned-session metadata followed by inherited editor/session metadata with the parent's `id`. `SessionParser` previously overwrote `nativeId` on every `session_meta`; sibling children collapsed into one topology identity. Regression checks preserve both distinct child IDs and parent-child edges after this sequence.
