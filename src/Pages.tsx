@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, ChevronDown, Folder, Info, LayoutGrid, Link2, List, LoaderCircle, Plus, RefreshCw, Search, Terminal, Trash2 } from 'lucide-react';
 import { EmptyState, ProviderMark, SectionHeading, SessionCard, StatusBadge } from './components';
 import { ActivityFeed } from './Overview';
@@ -88,7 +88,23 @@ export function TasksPage({ tasks, sessions, onOpen, newTask, editTask, moveTask
 
 export function ActivityPage({ sessions, onOpen }: { sessions: Session[]; onOpen: (s: Session) => void }) {
   const [query, setQuery] = useState(''), [provider, setProvider] = useState('all');
-  return <><FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search activity…">{(query || provider !== 'all') && <button className="text-button" onClick={() => { setQuery(''); setProvider('all'); }}>Reset activity filters</button>}</FilterBar><section className="panel activity-page-panel"><SectionHeading title="The story so far" description="Most recent supported events from your agent sessions" /><ActivityFeed sessions={sessions} onOpen={onOpen} full query={query} provider={provider} /></section><p className="page-footnote"><Info size={13} />Up to 100 matching retained events displayed from the current workspace. Open a session to see its retained history.</p></>;
+  const [kind, setKind] = useState('all');
+  const [range, setRange] = useState<'all' | '1h' | '24h' | '7d' | '30d'>('all');
+  const now = useObservationClock();
+  const kinds = useMemo(() => [...new Set(sessions.flatMap(session => session.events.map(event => event.kind)).filter(Boolean))].sort(), [sessions]);
+  const hasFilters = Boolean(query || provider !== 'all' || kind !== 'all' || range !== 'all');
+  function resetFilters() { setQuery(''); setProvider('all'); setKind('all'); setRange('all'); }
+  return <>
+    <FilterBar query={query} setQuery={setQuery} provider={provider} setProvider={setProvider} placeholder="Search activity…">
+      <label className="activity-filter"><span className="sr-only">Filter by event type</span><select aria-label="Filter by event type" value={kind} onChange={event => setKind(event.target.value)}><option value="all">All event types</option>{kinds.map(value => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1).replaceAll('_', ' ')}</option>)}</select></label>
+      <label className="activity-filter"><span className="sr-only">Activity time range</span><select aria-label="Activity time range" value={range} onChange={event => setRange(event.target.value as typeof range)}><option value="all">All time</option><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select></label>
+      {hasFilters && <button className="text-button" onClick={resetFilters}>Reset activity filters</button>}
+    </FilterBar>
+    <section className="panel activity-page-panel"><SectionHeading title="The story so far" description="Most recent supported events from your agent sessions" />
+      <ActivityFeed sessions={sessions} onOpen={onOpen} full query={query} provider={provider} kind={kind} range={range} now={now} />
+    </section>
+    <p className="page-footnote"><Info size={13} />Up to 100 matching retained events displayed from the current workspace. Open a session to see its retained history.</p>
+  </>;
 }
 
 export function SettingsPage({ mode, setMode, sources, scannedAt, tasks, tasksReadAt, tasksUpdatedAt, taskError, refreshing, refresh, theme, setTheme, resetDemo, notify }: {

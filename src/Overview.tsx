@@ -75,14 +75,21 @@ export function ActivityChart({ sessions, large = false }: { sessions: Session[]
   </section>;
 }
 
-export function ActivityFeed({ sessions, onOpen, full = false, query = '', provider = 'all' }: { sessions: Session[]; onOpen: (s: Session) => void; full?: boolean; query?: string; provider?: string }) {
+type ActivityRange = 'all' | '1h' | '24h' | '7d' | '30d';
+export function ActivityFeed({ sessions, onOpen, full = false, query = '', provider = 'all', kind = 'all', range = 'all', now = Date.now() }: { sessions: Session[]; onOpen: (s: Session) => void; full?: boolean; query?: string; provider?: string; kind?: string; range?: ActivityRange; now?: number }) {
   const retained = sessions.flatMap(s => s.events.map(e => ({ ...e, session: s })));
-  const events = retained.filter(e => (provider === 'all' || e.session.provider === provider) && `${e.label} ${e.session.title} ${e.session.project} ${e.session.name || ''}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const baseEvents = retained.filter(e => (provider === 'all' || e.session.provider === provider) && (kind === 'all' || e.kind === kind) && `${e.label} ${e.session.title} ${e.session.project} ${e.session.name || ''}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const durations: Record<Exclude<ActivityRange, 'all'>, number> = { '1h': 60 * 60_000, '24h': 24 * 60 * 60_000, '7d': 7 * 24 * 60 * 60_000, '30d': 30 * 24 * 60 * 60_000 };
+  const unknownTimestamps = range === 'all' ? 0 : baseEvents.filter(e => !Number.isFinite(Date.parse(e.timestamp))).length;
+  const events = range === 'all' ? baseEvents : baseEvents.filter(e => {
+    const timestamp = Date.parse(e.timestamp);
+    return Number.isFinite(timestamp) && timestamp >= now - durations[range] && timestamp <= now;
+  });
   const displayed = events.slice(0, full ? 100 : 6);
   if (!full && !displayed.length) return <EmptyState title="A quiet moment" description="Session activity will appear here as your agents work." />;
   return <>
-    {full && <><p className="field-help" role="status" aria-label="Activity result counts">Showing {displayed.length} of {events.length} matching events · {retained.length} retained supported events in the current workspace</p><p className="field-help">Only currently loaded, retained events are searched, with at most 100 matches displayed. Agency retains a bounded recent event list per loaded session; this is not complete history or live process activity.</p></>}
-    {!displayed.length ? <EmptyState title={retained.length ? 'No activity matches' : 'No retained activity'} description={retained.length ? 'Reset activity filters or try another search or provider.' : 'No supported events are retained in the currently loaded workspace data. This does not establish that no agent activity occurred.'} /> : <div className={`activity-feed ${full ? 'full' : ''}`}>{displayed.map((event, index) => <button className="activity-item" key={`${event.session.id}-${event.id}`} onClick={() => onOpen(event.session)}>
+    {full && <><p className="field-help" role="status" aria-label="Activity result counts">Showing {displayed.length} of {events.length} matching events · {retained.length} retained supported events in the current workspace{range !== 'all' ? ` · ${unknownTimestamps} matching events with unknown timestamps (excluded)` : ''}</p><p className="field-help">Only currently loaded, retained events are searched, with at most 100 matches displayed. Agency retains a bounded recent event list per loaded session; this is not complete history or live process activity.</p></>}
+    {!displayed.length ? <EmptyState title={retained.length ? 'No activity matches' : 'No retained activity'} description={retained.length ? (kind !== 'all' || range !== 'all' ? 'Reset activity filters or try another search, provider, event type, or time range.' : 'Reset activity filters or try another search or provider.') : 'No supported events are retained in the currently loaded workspace data. This does not establish that no agent activity occurred.'} /> : <div className={`activity-feed ${full ? 'full' : ''}`}>{displayed.map((event, index) => <button className="activity-item" key={`${event.session.id}-${event.id}`} onClick={() => onOpen(event.session)}>
     <span className={`feed-icon ${event.kind}`}>{event.kind === 'success' ? <Check size={14} /> : event.kind === 'tool' ? <Code2 size={14} /> : event.kind === 'waiting' ? <Clock3 size={14} /> : <Zap size={14} />}</span>
     <span className="feed-copy"><span><strong>{event.session.name || providerLabel(event.session.provider)}</strong> {event.label.toLowerCase()}</span><small><span className={`provider-text ${event.session.provider}`}>{providerLabel(event.session.provider)}</span><i />{event.session.project}</small><time>{timeAgo(event.timestamp)}</time></span>
     {full && <ArrowUpRight size={15} className="muted" />}{index < displayed.length - 1 && <i className="feed-line" />}
